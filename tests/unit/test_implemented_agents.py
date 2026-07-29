@@ -10,8 +10,8 @@ from dataforge.agents.evaluator import EvaluatorAgent
 from dataforge.agents.ingestion import DataIngestionAgent
 from dataforge.agents.planner import PlannerAgent
 from dataforge.agents.profiling import DataProfilingAgent
-from dataforge.core.state import GraphState
 from dataforge.core.logger import StructuredLogger
+from dataforge.core.state import GraphState
 
 
 @pytest.fixture

@@ -39,8 +39,8 @@ class TestEndToEndWorkflow:
         workflow = create_graph()
 
         # Initialize state
-        from dataforge.core.state import GraphState
         from dataforge.core.logger import StructuredLogger
+        from dataforge.core.state import GraphState
 
         logger = StructuredLogger("integration_test", str(output_dir))
         initial_state = GraphState(input_dataset_path=str(dataset_path))
@@ -130,8 +130,8 @@ class TestEndToEndWorkflow:
         workflow = create_graph()
 
         # Initialize state
-        from dataforge.core.state import GraphState
         from dataforge.core.logger import StructuredLogger
+        from dataforge.core.state import GraphState
 
         logger = StructuredLogger("integration_test", str(output_dir))
         initial_state = GraphState(input_dataset_path=str(dataset_path))
@@ -175,8 +175,8 @@ class TestEndToEndWorkflow:
         workflow = create_graph()
 
         # Initialize state
-        from dataforge.core.state import GraphState
         from dataforge.core.logger import StructuredLogger
+        from dataforge.core.state import GraphState
 
         logger = StructuredLogger("integration_test", str(output_dir))
         initial_state = GraphState(input_dataset_path=str(dataset_path))
@@ -224,8 +224,8 @@ class TestEndToEndWorkflow:
         workflow = create_graph()
 
         # Initialize state
-        from dataforge.core.state import GraphState
         from dataforge.core.logger import StructuredLogger
+        from dataforge.core.state import GraphState
 
         logger = StructuredLogger("integration_test", str(output_dir))
         initial_state = GraphState(input_dataset_path=str(dataset_path))
@@ -275,8 +275,8 @@ class TestEndToEndWorkflow:
         workflow = create_graph()
 
         # Initialize state
-        from dataforge.core.state import GraphState
         from dataforge.core.logger import StructuredLogger
+        from dataforge.core.state import GraphState
 
         logger = StructuredLogger("integration_test", str(output_dir))
         initial_state = GraphState(input_dataset_path=str(dataset_path))
@@ -336,6 +336,11 @@ class TestEndToEndWorkflow:
         steps_completed = result_state.get("steps_completed", [])
         assert len(steps_completed) > 0
         # Should include at least: DataIngestionAgent, DataProfilingAgent, EvaluatorAgent, ReportingAgent
-        expected_agents = ["DataIngestionAgent", "DataProfilingAgent", "EvaluatorAgent", "ReportingAgent"]
+        expected_agents = [
+            "DataIngestionAgent",
+            "DataProfilingAgent",
+            "EvaluatorAgent",
+            "ReportingAgent",
+        ]
         for agent in expected_agents:
             assert agent in steps_completed, f"Expected {agent} in completed steps"
