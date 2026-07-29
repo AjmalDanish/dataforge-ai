@@ -28,13 +28,13 @@ class StructuredLogger:
     }
     RESET = "\033[0m"
 
-    # Icons
+    # Icons (using ASCII-compatible characters for Windows console compatibility)
     ICONS = {
-        "DEBUG": "🔍",
-        "INFO": "✓",
-        "WARNING": "⚠",
-        "ERROR": "✗",
-        "CRITICAL": "💀",
+        "DEBUG": "[DEBUG]",
+        "INFO": "[INFO]",
+        "WARNING": "[WARN]",
+        "ERROR": "[ERROR]",
+        "CRITICAL": "[CRIT]",
     }
 
     def __init__(self, execution_id: str, output_dir: str | Path):
@@ -94,7 +94,14 @@ class StructuredLogger:
         if agent:
             output += f" [{agent}]"
 
-        print(output)
+        try:
+            print(output)
+        except UnicodeEncodeError:
+            # Fallback for Windows console encoding issues
+            plain_output = f"{icon} [{level}] {message}"
+            if agent:
+                plain_output += f" [{agent}]"
+            print(plain_output, errors="replace")
 
     def _file_log(self, entry: dict[str, Any]) -> None:
         """Write to log file.

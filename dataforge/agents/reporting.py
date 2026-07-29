@@ -419,14 +419,7 @@ class ReportingAgent(Agent):
                     html.append(f"            <div>{message}</div>")
                     html.append(f"        </div>")
 
-            html.extend(
-                [
-                    "        <p><strong>Total Insights:</strong> {len(insights)}</p>".format(
-                        len(insights=len(insights))
-                    ),
-                    "",
-                ]
-            )
+            html.append(f"        <p><strong>Total Insights:</strong> {len(insights)}</p>")
 
         # Execution Log Section
         if logs:

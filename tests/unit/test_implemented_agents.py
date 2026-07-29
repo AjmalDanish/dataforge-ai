@@ -120,7 +120,16 @@ class TestPlannerAgent:
             validation_status="failed",
             failed_checks=["has_insights"],
             retry_count=0,
-            steps_completed=["DataIngestionAgent", "DataProfilingAgent", "EvaluatorAgent"],
+            profile={"has_numeric_columns": True, "has_categorical_columns": True},
+            statistics={"correlations": {"significant": []}},
+            visualizations=[],
+            steps_completed=[
+                "DataIngestionAgent",
+                "DataProfilingAgent",
+                "StatisticalAnalysisAgent",
+                "VisualizationAgent",
+                "EvaluatorAgent",
+            ],
         )
 
         result = await planner.execute(state)
@@ -185,6 +194,7 @@ class TestEvaluatorAgent:
         state = state.set("profile", {"overall_missing_ratio": 0.1})
         state = state.set("insights", [{"type": "info", "message": "Test1"}] * 3)
         state = state.update_step("VisualizationAgent")
+        state = state.add_agent_result("DataIngestionAgent", {"success": True})
         state = state.add_agent_result("DataProfilingAgent", {"success": True})
         state = state.add_agent_result("StatisticalAnalysisAgent", {"success": True})
 
@@ -307,10 +317,10 @@ class TestDataProfilingAgent:
 
         df = pd.DataFrame(
             {
-                "id": [1, 2, 3],
-                "name": ["Alice", "Bob", "Charlie"],
-                "age": [25, 30, 35],
-                "salary": [50000.0, 60000.0, 70000.0],
+                "id": [1, 2, 3, 4, 5],
+                "name": ["Alice", "Bob", "Alice", "Bob", "Alice"],
+                "age": [25, 30, 35, 40, 45],
+                "salary": [50000.0, 60000.0, 70000.0, 80000.0, 90000.0],
             }
         )
         state = GraphState(input_dataset_path="test.csv")
@@ -322,7 +332,7 @@ class TestDataProfilingAgent:
         assert "profiled" in result.message.lower()
         assert "profile" in result.data_updates
         profile = result.data_updates["profile"]
-        assert profile["n_rows"] == 3
+        assert profile["n_rows"] == 5
         assert profile["n_columns"] == 4
         assert len(profile["numeric_columns"]) == 3
         assert len(profile["categorical_columns"]) == 1

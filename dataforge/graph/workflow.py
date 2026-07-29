@@ -26,6 +26,16 @@ def route_from_planner(state: GraphState) -> str:
     Returns:
         Next node name.
     """
+    # Mapping from agent names to node names
+    agent_to_node = {
+        "DataIngestionAgent": "ingestion",
+        "DataProfilingAgent": "profiling",
+        "StatisticalAnalysisAgent": "statistics",
+        "VisualizationAgent": "visualization",
+        "EvaluatorAgent": "evaluator",
+        "ReportingAgent": "reporting",
+    }
+
     # Get the most recent agent result
     if state.agent_history:
         last_result = state.agent_history[-1]["result"]
@@ -36,8 +46,7 @@ def route_from_planner(state: GraphState) -> str:
 
         next_agent = last_result.get("next_agent_suggestion")
         if next_agent:
-            # Convert "DataIngestionAgent" to "ingestion"
-            return next_agent.lower().replace("agent", "").replace("data", "")
+            return agent_to_node.get(next_agent, END)
 
     # Default fallback
     return END

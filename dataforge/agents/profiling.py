@@ -173,8 +173,8 @@ class DataProfilingAgent(Agent):
         elif pd.api.types.is_bool_dtype(dtype):
             return "boolean"
         else:
-            # Categorical if low cardinality
-            if n_unique / len(series) < 0.1:
+            # Categorical if low cardinality (<= 10 unique values or < 20% unique)
+            if n_unique <= 10 or (n_unique / len(series) < 0.2):
                 return "categorical"
             else:
                 return "text"

@@ -111,6 +111,7 @@ class Agent(ABC):
                     "decision": result.decision.value,
                     "message": result.message,
                     "duration_seconds": duration,
+                    "next_agent_suggestion": result.next_agent_suggestion,
                     **result.metadata,
                 },
             )
