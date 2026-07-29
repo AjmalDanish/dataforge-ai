@@ -189,11 +189,11 @@ class TestEndToEndWorkflow:
 
         # Verify workflow completed despite missing values
         assert result_state is not None
-        assert result_state.get("raw_data") is not None
-        assert result_state.get("profile") is not None
+        assert result_state.get("data", {}).get("raw_data") is not None
+        assert result_state.get("data", {}).get("profile") is not None
 
         # Verify missing values were detected
-        profile = result_state.get("profile")
+        profile = result_state.get("data", {}).get("profile")
         assert profile is not None
         assert profile["overall_missing_ratio"] > 0
 
