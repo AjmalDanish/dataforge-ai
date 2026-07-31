@@ -8,7 +8,10 @@ import time
 import pandas as pd
 from pathlib import Path
 
-async def run_analysis(dataset_path: str, output_dir: str | None = None) -> int:
+
+async def run_analysis(
+    dataset_path: str, output_dir: str | None = None, verbose: bool = False
+) -> int:
     """Execute DataForge AI analysis on a dataset.
 
     Args:
@@ -75,9 +78,15 @@ async def run_analysis(dataset_path: str, output_dir: str | None = None) -> int:
             data = final_state.get("data", {})
 
             print(f"✓ Dataset Loaded")
-            print(f"✓ Profiling Complete ({len(data.get('profile', {}).get('columns', {}))} columns)")
-            print(f"✓ Statistics Complete ({len(data.get('statistics', {}).get('descriptive_stats', {})} columns analyzed)")
-            print(f"✓ Visualizations Generated ({len(data.get('visualizations', [])) interactive charts)")
+            print(
+                f"✓ Profiling Complete ({len(data.get('profile', {}).get('columns', {}))} columns)"
+            )
+            print(
+                f"✓ Statistics Complete ({len(data.get('statistics', {}).get('descriptive_stats', {}))} columns analyzed)"
+            )
+            print(
+                f"✓ Visualizations Generated ({len(data.get('visualizations', []))} interactive charts)"
+            )
             print(f"✓ Report Generated")
             print(f"✓ Workflow Finished")
             print(f"✓ Execution duration: {duration:.2f}s")
@@ -96,6 +105,7 @@ async def run_analysis(dataset_path: str, output_dir: str | None = None) -> int:
             print(f"❌ Error: {e}")
             if verbose:
                 import traceback
+
                 traceback.print_exc()
             return 1
 
