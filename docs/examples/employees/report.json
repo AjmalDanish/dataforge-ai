@@ -1,0 +1,822 @@
+{
+  "metadata": {
+    "generated_at": "2026-08-01T03:08:28.538840",
+    "dataset_path": "unknown",
+    "total_rows": 20,
+    "total_columns": 9,
+    "agents_completed": []
+  },
+  "profile": {
+    "n_rows": 20,
+    "n_columns": 9,
+    "columns": {
+      "product_id": {
+        "name": "product_id",
+        "dtype": "int64",
+        "type": "numeric",
+        "n_unique": 20,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "product_name": {
+        "name": "product_name",
+        "dtype": "str",
+        "type": "text",
+        "n_unique": 20,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "category": {
+        "name": "category",
+        "dtype": "str",
+        "type": "categorical",
+        "n_unique": 3,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "price": {
+        "name": "price",
+        "dtype": "float64",
+        "type": "numeric",
+        "n_unique": 18,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "stock_quantity": {
+        "name": "stock_quantity",
+        "dtype": "int64",
+        "type": "numeric",
+        "n_unique": 18,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "sold_quantity": {
+        "name": "sold_quantity",
+        "dtype": "int64",
+        "type": "numeric",
+        "n_unique": 20,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "customer_rating": {
+        "name": "customer_rating",
+        "dtype": "float64",
+        "type": "numeric",
+        "n_unique": 10,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "reviews_count": {
+        "name": "reviews_count",
+        "dtype": "int64",
+        "type": "numeric",
+        "n_unique": 20,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      },
+      "launch_date": {
+        "name": "launch_date",
+        "dtype": "str",
+        "type": "text",
+        "n_unique": 20,
+        "n_missing": "0",
+        "missing_ratio": 0.0,
+        "is_high_cardinality": false
+      }
+    },
+    "numeric_columns": [
+      "product_id",
+      "price",
+      "stock_quantity",
+      "sold_quantity",
+      "customer_rating",
+      "reviews_count"
+    ],
+    "categorical_columns": [
+      "category"
+    ],
+    "has_numeric_columns": true,
+    "has_categorical_columns": true,
+    "numeric_column_count": 6,
+    "categorical_column_count": 1,
+    "overall_missing_ratio": 0.0
+  },
+  "statistics": {
+    "descriptive_stats": {
+      "product_id": {
+        "count": 20,
+        "mean": 110.5,
+        "median": 110.5,
+        "std": 5.916079783099616,
+        "min": 101.0,
+        "max": 120.0,
+        "q25": 105.75,
+        "q75": 115.25,
+        "skewness": 0.0,
+        "kurtosis": -1.1999999999999997,
+        "variance": 35.0
+      },
+      "price": {
+        "count": 20,
+        "mean": 280.48999999999995,
+        "median": 154.99,
+        "std": 304.88090858735745,
+        "min": 29.99,
+        "max": 1299.99,
+        "q25": 87.49,
+        "q75": 362.49,
+        "skewness": 2.2546705006604135,
+        "kurtosis": 5.9892236370297915,
+        "variance": 92952.36842105263
+      },
+      "stock_quantity": {
+        "count": 20,
+        "mean": 208.75,
+        "median": 150.0,
+        "std": 196.50147314299815,
+        "min": 25.0,
+        "max": 700.0,
+        "q25": 67.5,
+        "q75": 262.5,
+        "skewness": 1.3827344045710397,
+        "kurtosis": 1.077232411568363,
+        "variance": 38612.82894736842
+      },
+      "sold_quantity": {
+        "count": 20,
+        "mean": 355.55,
+        "median": 232.5,
+        "std": 308.0217823808125,
+        "min": 48.0,
+        "max": 1050.0,
+        "q25": 121.25,
+        "q75": 490.0,
+        "skewness": 1.1081741018473197,
+        "kurtosis": 0.17627478520635265,
+        "variance": 94877.41842105263
+      },
+      "customer_rating": {
+        "count": 20,
+        "mean": 4.315,
+        "median": 4.3,
+        "std": 0.24553914898486254,
+        "min": 3.9,
+        "max": 4.8,
+        "q25": 4.175,
+        "q75": 4.5,
+        "skewness": 0.2819996794160888,
+        "kurtosis": -0.6123420042363543,
+        "variance": 0.060289473684210525
+      },
+      "reviews_count": {
+        "count": 20,
+        "mean": 160.9,
+        "median": 122.5,
+        "std": 117.84597440816773,
+        "min": 30.0,
+        "max": 420.0,
+        "q25": 74.75,
+        "q75": 227.5,
+        "skewness": 0.9471460050079976,
+        "kurtosis": -0.17588288672013475,
+        "variance": 13887.673684210526
+      }
+    },
+    "correlations": {
+      "matrix": {
+        "product_id_price": -0.5032054609306809,
+        "product_id_stock_quantity": 0.2246710350446957,
+        "product_id_sold_quantity": 0.14745830171540183,
+        "product_id_customer_rating": -0.4148557532163902,
+        "product_id_reviews_count": 0.18759619191583113,
+        "price_stock_quantity": -0.4392916351597435,
+        "price_sold_quantity": -0.4486130805368227,
+        "price_customer_rating": 0.678352178284138,
+        "price_reviews_count": -0.4577582198446696,
+        "stock_quantity_sold_quantity": 0.9902268536484965,
+        "stock_quantity_customer_rating": -0.5324647884096996,
+        "stock_quantity_reviews_count": 0.9763768477138638,
+        "sold_quantity_customer_rating": -0.5139642907547906,
+        "sold_quantity_reviews_count": 0.9776588587421174,
+        "customer_rating_reviews_count": -0.5938191244104724
+      },
+      "significant": [
+        {
+          "columns": [
+            "product_id",
+            "price"
+          ],
+          "correlation": -0.5032054609306809,
+          "strength": "moderate",
+          "direction": "negative"
+        },
+        {
+          "columns": [
+            "price",
+            "customer_rating"
+          ],
+          "correlation": 0.678352178284138,
+          "strength": "moderate",
+          "direction": "positive"
+        },
+        {
+          "columns": [
+            "stock_quantity",
+            "sold_quantity"
+          ],
+          "correlation": 0.9902268536484965,
+          "strength": "strong",
+          "direction": "positive"
+        },
+        {
+          "columns": [
+            "stock_quantity",
+            "customer_rating"
+          ],
+          "correlation": -0.5324647884096996,
+          "strength": "moderate",
+          "direction": "negative"
+        },
+        {
+          "columns": [
+            "stock_quantity",
+            "reviews_count"
+          ],
+          "correlation": 0.9763768477138638,
+          "strength": "strong",
+          "direction": "positive"
+        },
+        {
+          "columns": [
+            "sold_quantity",
+            "customer_rating"
+          ],
+          "correlation": -0.5139642907547906,
+          "strength": "moderate",
+          "direction": "negative"
+        },
+        {
+          "columns": [
+            "sold_quantity",
+            "reviews_count"
+          ],
+          "correlation": 0.9776588587421174,
+          "strength": "strong",
+          "direction": "positive"
+        },
+        {
+          "columns": [
+            "customer_rating",
+            "reviews_count"
+          ],
+          "correlation": -0.5938191244104724,
+          "strength": "moderate",
+          "direction": "negative"
+        }
+      ]
+    },
+    "distribution_tests": {
+      "product_id": {
+        "skewness": 0.0,
+        "kurtosis": -1.1999999999999997,
+        "is_skewed": false,
+        "is_heavy_tailed": false,
+        "shapiro_stat": 0.9603751831064345,
+        "shapiro_p": 0.5513717430400781,
+        "is_normal": true
+      },
+      "price": {
+        "skewness": 2.2546705006604135,
+        "kurtosis": 5.9892236370297915,
+        "is_skewed": true,
+        "is_heavy_tailed": true,
+        "shapiro_stat": 0.7486114913405142,
+        "shapiro_p": 0.0001626478507545093,
+        "is_normal": false
+      },
+      "stock_quantity": {
+        "skewness": 1.3827344045710397,
+        "kurtosis": 1.077232411568363,
+        "is_skewed": true,
+        "is_heavy_tailed": false,
+        "shapiro_stat": 0.8261209350287524,
+        "shapiro_p": 0.0021767250065665407,
+        "is_normal": false
+      },
+      "sold_quantity": {
+        "skewness": 1.1081741018473197,
+        "kurtosis": 0.17627478520635265,
+        "is_skewed": true,
+        "is_heavy_tailed": false,
+        "shapiro_stat": 0.8545701586443424,
+        "shapiro_p": 0.006364263751143532,
+        "is_normal": false
+      },
+      "customer_rating": {
+        "skewness": 0.2819996794160888,
+        "kurtosis": -0.6123420042363543,
+        "is_skewed": false,
+        "is_heavy_tailed": false,
+        "shapiro_stat": 0.9718617217357726,
+        "shapiro_p": 0.7936135616175998,
+        "is_normal": true
+      },
+      "reviews_count": {
+        "skewness": 0.9471460050079976,
+        "kurtosis": -0.17588288672013475,
+        "is_skewed": false,
+        "is_heavy_tailed": false,
+        "shapiro_stat": 0.8871321008741141,
+        "shapiro_p": 0.023827071449553403,
+        "is_normal": false
+      }
+    },
+    "outliers": {
+      "product_id": [],
+      "price": [
+        1
+      ],
+      "stock_quantity": [
+        15,
+        19
+      ],
+      "sold_quantity": [
+        19
+      ],
+      "customer_rating": [],
+      "reviews_count": []
+    },
+    "group_tests": {
+      "product_id_by_category": {
+        "categorical_column": "category",
+        "numeric_column": "product_id",
+        "f_statistic": 0.07597031806019143,
+        "p_value": 0.9271565698882779,
+        "significant": false,
+        "group_names": [
+          "Electronics",
+          "Furniture",
+          "Home"
+        ],
+        "group_means": [
+          110.0909090909091,
+          111.4,
+          110.5
+        ]
+      },
+      "price_by_category": {
+        "categorical_column": "category",
+        "numeric_column": "price",
+        "f_statistic": 0.7718133137337252,
+        "p_value": 0.47770644479425306,
+        "significant": false,
+        "group_names": [
+          "Electronics",
+          "Furniture",
+          "Home"
+        ],
+        "group_means": [
+          329.98999999999995,
+          307.99,
+          109.99
+        ]
+      },
+      "stock_quantity_by_category": {
+        "categorical_column": "category",
+        "numeric_column": "stock_quantity",
+        "f_statistic": 3.6425602453092876,
+        "p_value": 0.048241810669715154,
+        "significant": true,
+        "group_names": [
+          "Electronics",
+          "Furniture",
+          "Home"
+        ],
+        "group_means": [
+          292.72727272727275,
+          41.0,
+          187.5
+        ]
+      },
+      "sold_quantity_by_category": {
+        "categorical_column": "category",
+        "numeric_column": "sold_quantity",
+        "f_statistic": 4.071216844621826,
+        "p_value": 0.03592143419104582,
+        "significant": true,
+        "group_names": [
+          "Electronics",
+          "Furniture",
+          "Home"
+        ],
+        "group_means": [
+          485.09090909090907,
+          73.0,
+          352.5
+        ]
+      },
+      "customer_rating_by_category": {
+        "categorical_column": "category",
+        "numeric_column": "customer_rating",
+        "f_statistic": 2.903774488926743,
+        "p_value": 0.08225221354444137,
+        "significant": false,
+        "group_names": [
+          "Electronics",
+          "Furniture",
+          "Home"
+        ],
+        "group_means": [
+          4.327272727272727,
+          4.46,
+          4.1
+        ]
+      },
+      "reviews_count_by_category": {
+        "categorical_column": "category",
+        "numeric_column": "reviews_count",
+        "f_statistic": 4.526300834133131,
+        "p_value": 0.02655103694631965,
+        "significant": true,
+        "group_names": [
+          "Electronics",
+          "Furniture",
+          "Home"
+        ],
+        "group_means": [
+          208.63636363636363,
+          46.0,
+          173.25
+        ]
+      }
+    },
+    "numeric_column_count": 6
+  },
+  "visualizations": [
+    {
+      "type": "distribution",
+      "column": "product_id",
+      "title": "Distribution of product_id",
+      "file_path": "output\\visualizations\\distribution_product_id.html",
+      "file_name": "distribution_product_id.html",
+      "format": "html"
+    },
+    {
+      "type": "distribution",
+      "column": "price",
+      "title": "Distribution of price",
+      "file_path": "output\\visualizations\\distribution_price.html",
+      "file_name": "distribution_price.html",
+      "format": "html"
+    },
+    {
+      "type": "distribution",
+      "column": "stock_quantity",
+      "title": "Distribution of stock_quantity",
+      "file_path": "output\\visualizations\\distribution_stock_quantity.html",
+      "file_name": "distribution_stock_quantity.html",
+      "format": "html"
+    },
+    {
+      "type": "distribution",
+      "column": "sold_quantity",
+      "title": "Distribution of sold_quantity",
+      "file_path": "output\\visualizations\\distribution_sold_quantity.html",
+      "file_name": "distribution_sold_quantity.html",
+      "format": "html"
+    },
+    {
+      "type": "distribution",
+      "column": "customer_rating",
+      "title": "Distribution of customer_rating",
+      "file_path": "output\\visualizations\\distribution_customer_rating.html",
+      "file_name": "distribution_customer_rating.html",
+      "format": "html"
+    },
+    {
+      "type": "distribution",
+      "column": "reviews_count",
+      "title": "Distribution of reviews_count",
+      "file_path": "output\\visualizations\\distribution_reviews_count.html",
+      "file_name": "distribution_reviews_count.html",
+      "format": "html"
+    },
+    {
+      "type": "boxplot",
+      "column": "product_id",
+      "title": "Box Plot of product_id",
+      "file_path": "output\\visualizations\\boxplot_product_id.html",
+      "file_name": "boxplot_product_id.html",
+      "format": "html"
+    },
+    {
+      "type": "boxplot",
+      "column": "price",
+      "title": "Box Plot of price",
+      "file_path": "output\\visualizations\\boxplot_price.html",
+      "file_name": "boxplot_price.html",
+      "format": "html"
+    },
+    {
+      "type": "boxplot",
+      "column": "stock_quantity",
+      "title": "Box Plot of stock_quantity",
+      "file_path": "output\\visualizations\\boxplot_stock_quantity.html",
+      "file_name": "boxplot_stock_quantity.html",
+      "format": "html"
+    },
+    {
+      "type": "boxplot",
+      "column": "sold_quantity",
+      "title": "Box Plot of sold_quantity",
+      "file_path": "output\\visualizations\\boxplot_sold_quantity.html",
+      "file_name": "boxplot_sold_quantity.html",
+      "format": "html"
+    },
+    {
+      "type": "boxplot",
+      "column": "customer_rating",
+      "title": "Box Plot of customer_rating",
+      "file_path": "output\\visualizations\\boxplot_customer_rating.html",
+      "file_name": "boxplot_customer_rating.html",
+      "format": "html"
+    },
+    {
+      "type": "boxplot",
+      "column": "reviews_count",
+      "title": "Box Plot of reviews_count",
+      "file_path": "output\\visualizations\\boxplot_reviews_count.html",
+      "file_name": "boxplot_reviews_count.html",
+      "format": "html"
+    },
+    {
+      "type": "correlation",
+      "columns": [
+        "product_id",
+        "price",
+        "stock_quantity",
+        "sold_quantity",
+        "customer_rating",
+        "reviews_count"
+      ],
+      "title": "Correlation Heatmap",
+      "file_path": "output\\visualizations\\correlation_heatmap.html",
+      "file_name": "correlation_heatmap.html",
+      "format": "html"
+    },
+    {
+      "type": "bar",
+      "column": "category",
+      "title": "Top Values for category",
+      "file_path": "output\\visualizations\\bar_category.html",
+      "file_name": "bar_category.html",
+      "format": "html",
+      "value_count": 3
+    },
+    {
+      "type": "categorical_numeric",
+      "columns": [
+        "category",
+        "stock_quantity"
+      ],
+      "title": "stock_quantity by category",
+      "file_path": "output\\visualizations\\box_stock_quantity_by_category.html",
+      "file_name": "box_stock_quantity_by_category.html",
+      "format": "html",
+      "p_value": 0.048241810669715154
+    },
+    {
+      "type": "categorical_numeric",
+      "columns": [
+        "category",
+        "sold_quantity"
+      ],
+      "title": "sold_quantity by category",
+      "file_path": "output\\visualizations\\box_sold_quantity_by_category.html",
+      "file_name": "box_sold_quantity_by_category.html",
+      "format": "html",
+      "p_value": 0.03592143419104582
+    },
+    {
+      "type": "categorical_numeric",
+      "columns": [
+        "category",
+        "reviews_count"
+      ],
+      "title": "reviews_count by category",
+      "file_path": "output\\visualizations\\box_reviews_count_by_category.html",
+      "file_name": "box_reviews_count_by_category.html",
+      "format": "html",
+      "p_value": 0.02655103694631965
+    }
+  ],
+  "insights": [
+    {
+      "type": "data_structure",
+      "message": "Found 6 numeric columns available for statistical analysis",
+      "severity": "info"
+    },
+    {
+      "type": "correlation",
+      "message": "Strong negative correlation (-0.50) found between product_id and price",
+      "severity": "info",
+      "columns": [
+        "product_id",
+        "price"
+      ],
+      "correlation": -0.5032054609306809
+    },
+    {
+      "type": "correlation",
+      "message": "Strong positive correlation (0.68) found between price and customer_rating",
+      "severity": "info",
+      "columns": [
+        "price",
+        "customer_rating"
+      ],
+      "correlation": 0.678352178284138
+    },
+    {
+      "type": "correlation",
+      "message": "Strong positive correlation (0.99) found between stock_quantity and sold_quantity",
+      "severity": "warning",
+      "columns": [
+        "stock_quantity",
+        "sold_quantity"
+      ],
+      "correlation": 0.9902268536484965
+    },
+    {
+      "type": "correlation",
+      "message": "Strong negative correlation (-0.53) found between stock_quantity and customer_rating",
+      "severity": "info",
+      "columns": [
+        "stock_quantity",
+        "customer_rating"
+      ],
+      "correlation": -0.5324647884096996
+    },
+    {
+      "type": "correlation",
+      "message": "Strong positive correlation (0.98) found between stock_quantity and reviews_count",
+      "severity": "warning",
+      "columns": [
+        "stock_quantity",
+        "reviews_count"
+      ],
+      "correlation": 0.9763768477138638
+    },
+    {
+      "type": "correlation",
+      "message": "Strong negative correlation (-0.51) found between sold_quantity and customer_rating",
+      "severity": "info",
+      "columns": [
+        "sold_quantity",
+        "customer_rating"
+      ],
+      "correlation": -0.5139642907547906
+    },
+    {
+      "type": "correlation",
+      "message": "Strong positive correlation (0.98) found between sold_quantity and reviews_count",
+      "severity": "warning",
+      "columns": [
+        "sold_quantity",
+        "reviews_count"
+      ],
+      "correlation": 0.9776588587421174
+    },
+    {
+      "type": "correlation",
+      "message": "Strong negative correlation (-0.59) found between customer_rating and reviews_count",
+      "severity": "info",
+      "columns": [
+        "customer_rating",
+        "reviews_count"
+      ],
+      "correlation": -0.5938191244104724
+    },
+    {
+      "type": "outlier",
+      "message": "Detected 4 outlier values across 6 columns",
+      "severity": "warning",
+      "columns": [
+        "product_id",
+        "price",
+        "stock_quantity",
+        "sold_quantity",
+        "customer_rating",
+        "reviews_count"
+      ],
+      "outlier_count": 4
+    },
+    {
+      "type": "distribution",
+      "message": "4 columns do not follow normal distribution: price, stock_quantity, sold_quantity",
+      "severity": "info",
+      "columns": [
+        "price",
+        "stock_quantity",
+        "sold_quantity",
+        "reviews_count"
+      ]
+    },
+    {
+      "type": "group_difference",
+      "message": "Significant differences found in stock_quantity across category groups (p=0.0482)",
+      "severity": "info",
+      "columns": [
+        "category",
+        "stock_quantity"
+      ],
+      "p_value": 0.048241810669715154
+    },
+    {
+      "type": "group_difference",
+      "message": "Significant differences found in sold_quantity across category groups (p=0.0359)",
+      "severity": "info",
+      "columns": [
+        "category",
+        "sold_quantity"
+      ],
+      "p_value": 0.03592143419104582
+    },
+    {
+      "type": "group_difference",
+      "message": "Significant differences found in reviews_count across category groups (p=0.0266)",
+      "severity": "info",
+      "columns": [
+        "category",
+        "reviews_count"
+      ],
+      "p_value": 0.02655103694631965
+    },
+    {
+      "type": "skewness",
+      "message": "3 columns show significant skewness: price, stock_quantity, sold_quantity",
+      "severity": "info",
+      "columns": [
+        "price",
+        "stock_quantity",
+        "sold_quantity"
+      ]
+    },
+    {
+      "type": "visualization_summary",
+      "message": "Generated 17 visualizations: 6 distribution, 6 boxplot, 1 correlation, 1 bar, 3 categorical_numeric",
+      "severity": "info",
+      "visualization_types": {
+        "distribution": 6,
+        "boxplot": 6,
+        "correlation": 1,
+        "bar": 1,
+        "categorical_numeric": 3
+      },
+      "total_visualizations": 17
+    },
+    {
+      "type": "distribution_insights",
+      "message": "Visualized 6 distributions; 4 appear non-normal and may need transformation",
+      "severity": "info",
+      "non_normal_columns": [
+        "price",
+        "stock_quantity",
+        "sold_quantity",
+        "reviews_count"
+      ]
+    },
+    {
+      "type": "outlier_insights",
+      "message": "Box plots reveal outliers in 3 columns",
+      "severity": "warning",
+      "columns_with_outliers": [
+        "price",
+        "stock_quantity",
+        "sold_quantity"
+      ]
+    },
+    {
+      "type": "group_difference_insights",
+      "message": "Visualized 3 significant group differences",
+      "severity": "info",
+      "group_difference_count": 3
+    }
+  ],
+  "execution_logs": [],
+  "summary": {
+    "total_insights": 19,
+    "total_visualizations": 17,
+    "numeric_columns": 6,
+    "categorical_columns": 1,
+    "significant_correlations": 8,
+    "total_outliers": 4
+  }
+}

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "dataforge-ai"
-version = "0.1.0"
+version = "1.0.0"
 description = "Autonomous Multi-Agent Data Science Platform powered by Graph Engineering"
 authors = ["DataForge AI Contributors"]
 readme = "README.md"
@@ -8,7 +8,7 @@ license = "MIT"
 repository = "https://github.com/yourusername/dataforge-ai"
 keywords = ["data-science", "ai", "agents", "langgraph", "autonomous"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",

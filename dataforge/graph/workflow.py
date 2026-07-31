@@ -1,6 +1,7 @@
 """LangGraph workflow for DataForge AI."""
 
 from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 from dataforge.agents import (
     DataIngestionAgent,
@@ -52,11 +53,11 @@ def route_from_planner(state: GraphState) -> str:
     return END
 
 
-def create_graph() -> StateGraph:
+def create_graph() -> CompiledStateGraph:
     """Create the analysis workflow graph.
 
     Returns:
-        Compiled StateGraph.
+        Compiled StateGraph (CompiledStateGraph with ainvoke/invoke/stream support).
     """
     workflow = StateGraph(GraphState)
 

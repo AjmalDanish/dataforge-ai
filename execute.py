@@ -100,6 +100,9 @@ async def run_analysis(
                 print(f"   Visualizations: {output_path}/visualizations/")
                 print(f"   Logs: {output_path}/execution_*.log")
                 return 0
+            else:
+                print("\n⚠️ Analysis completed but no report generated")
+                return 1
 
         except Exception as e:
             print(f"❌ Error: {e}")

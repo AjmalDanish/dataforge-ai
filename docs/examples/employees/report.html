@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataForge AI Analysis Report</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif; margin: 0; padding: 20px; background: #f5f7fa; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #34495e; margin-top: 30px; border-left: 4px solid #3498db; padding-left: 10px; }
+        h3 { color: #7f8c8d; margin-top: 20px; }
+        .metadata { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        .metadata-item { display: inline-block; margin-right: 20px; }
+        .metadata-label { font-weight: bold; color: #2c3e50; }
+        .section { margin: 30px 0; }
+        .insight { padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #bdc3c7; }
+        .insight.info { background: #d4edda; border-color: #28a745; }
+        .insight.warning { background: #fff3cd; border-color: #ffc107; }
+        .insight.error { background: #f8d7da; border-color: #dc3545; }
+        .insight-type { font-weight: bold; text-transform: uppercase; font-size: 12px; color: #7f8c8d; }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin: 20px 0; }
+        .stat-card { background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; }
+        .stat-value { font-size: 24px; font-weight: bold; color: #3498db; }
+        .stat-label { color: #7f8c8d; font-size: 14px; }
+        .viz-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin: 20px 0; }
+        .viz-item { background: #f8f9fa; padding: 15px; border-radius: 5px; border: 1px solid #dee2e6; }
+        .viz-link { color: #3498db; text-decoration: none; }
+        .viz-link:hover { text-decoration: underline; }
+        .table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .table th, .table td { padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }
+        .table th { background: #3498db; color: white; }
+        .table tr:hover { background: #f8f9fa; }
+        .tag { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; margin-right: 5px; }
+        .tag.info { background: #d1ecf1; color: #0c5460; }
+        .tag.warning { background: #fff3cd; color: #856404; }
+        .tag.success { background: #d4edda; color: #155724; }
+    </style>
+</head>
+<body>
+    <div class='container'>
+        <h1>📊 DataForge AI Analysis Report</h1>
+
+        <div class='metadata'>
+            <div class='metadata-item'><span class='metadata-label'>generated_at:</span> 2026-08-01T03:08:28.538840</div>
+            <div class='metadata-item'><span class='metadata-label'>dataset_path:</span> unknown</div>
+            <div class='metadata-item'><span class='metadata-label'>total_rows:</span> 20</div>
+            <div class='metadata-item'><span class='metadata-label'>total_columns:</span> 9</div>
+            <div class='metadata-item'><span class='metadata-label'>agents_completed:</span> </div>
+        </div>
+
+        <h2>📁 Data Profile</h2>
+        <div class='stat-grid'>
+            <div class='stat-card'><div class='stat-value'>20</div><div class='stat-label'>Rows</div></div>
+            <div class='stat-card'><div class='stat-value'>9</div><div class='stat-label'>Columns</div></div>
+            <div class='stat-card'><div class='stat-value'>6</div><div class='stat-label'>Numeric Columns</div></div>
+            <div class='stat-card'><div class='stat-value'>1</div><div class='stat-label'>Categorical Columns</div></div>
+            <div class='stat-card'><div class='stat-value'>0.0%</div><div class='stat-label'>Missing Values</div></div>
+        </div>
+
+        <h3>Column Details</h3>
+        <table class='table'>
+            <thead><tr><th>Column</th><th>Type</th><th>Unique</th><th>Missing</th><th>Missing %</th></tr></thead>
+            <tbody>
+                <tr><td>product_id</td><td>numeric</td><td>20</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>product_name</td><td>text</td><td>20</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>category</td><td>categorical</td><td>3</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>price</td><td>numeric</td><td>18</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>stock_quantity</td><td>numeric</td><td>18</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>sold_quantity</td><td>numeric</td><td>20</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>customer_rating</td><td>numeric</td><td>10</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>reviews_count</td><td>numeric</td><td>20</td><td>0</td><td>0.0%</td></tr>
+                <tr><td>launch_date</td><td>text</td><td>20</td><td>0</td><td>0.0%</td></tr>
+            </tbody>
+        </table>
+
+        <h2>📈 Statistical Analysis</h2>
+
+        <h3>Descriptive Statistics</h3>
+        <table class='table'>
+            <thead><tr><th>Column</th><th>Mean</th><th>Median</th><th>Std</th><th>Min</th><th>Max</th></tr></thead>
+            <tbody>
+                <tr><td>product_id</td><td>110.50</td><td>110.50</td><td>5.92</td><td>101.00</td><td>120.00</td></tr>
+                <tr><td>price</td><td>280.49</td><td>154.99</td><td>304.88</td><td>29.99</td><td>1299.99</td></tr>
+                <tr><td>stock_quantity</td><td>208.75</td><td>150.00</td><td>196.50</td><td>25.00</td><td>700.00</td></tr>
+                <tr><td>sold_quantity</td><td>355.55</td><td>232.50</td><td>308.02</td><td>48.00</td><td>1050.00</td></tr>
+                <tr><td>customer_rating</td><td>4.32</td><td>4.30</td><td>0.25</td><td>3.90</td><td>4.80</td></tr>
+                <tr><td>reviews_count</td><td>160.90</td><td>122.50</td><td>117.85</td><td>30.00</td><td>420.00</td></tr>
+            </tbody>
+        </table>
+
+        <h3>Significant Correlations</h3>
+        <table class='table'>
+            <thead><tr><th>Columns</th><th>Correlation</th><th>Strength</th><th>Direction</th></tr></thead>
+            <tbody>
+                <tr><td>product_id ↔ price</td><td>-0.503</td><td><span class='tag info'>moderate</span></td><td><span class='tag warning'>negative</span></td></tr>
+                <tr><td>price ↔ customer_rating</td><td>0.678</td><td><span class='tag info'>moderate</span></td><td><span class='tag success'>positive</span></td></tr>
+                <tr><td>stock_quantity ↔ sold_quantity</td><td>0.990</td><td><span class='tag info'>strong</span></td><td><span class='tag success'>positive</span></td></tr>
+                <tr><td>stock_quantity ↔ customer_rating</td><td>-0.532</td><td><span class='tag info'>moderate</span></td><td><span class='tag warning'>negative</span></td></tr>
+                <tr><td>stock_quantity ↔ reviews_count</td><td>0.976</td><td><span class='tag info'>strong</span></td><td><span class='tag success'>positive</span></td></tr>
+                <tr><td>sold_quantity ↔ customer_rating</td><td>-0.514</td><td><span class='tag info'>moderate</span></td><td><span class='tag warning'>negative</span></td></tr>
+                <tr><td>sold_quantity ↔ reviews_count</td><td>0.978</td><td><span class='tag info'>strong</span></td><td><span class='tag success'>positive</span></td></tr>
+                <tr><td>customer_rating ↔ reviews_count</td><td>-0.594</td><td><span class='tag info'>moderate</span></td><td><span class='tag warning'>negative</span></td></tr>
+            </tbody>
+        </table>
+
+        <h3>Outliers Detected</h3>
+        <p>Total outliers detected: <strong>4</strong> across 6 columns</p>
+        <ul>
+            <li>product_id: 0 outliers</li>
+            <li>price: 1 outliers</li>
+            <li>stock_quantity: 2 outliers</li>
+            <li>sold_quantity: 1 outliers</li>
+            <li>customer_rating: 0 outliers</li>
+            <li>reviews_count: 0 outliers</li>
+        </ul>
+
+        <h2>📊 Visualizations</h2>
+        <div class='viz-list'>
+            <div class='viz-item'>
+                <strong>Distribution of product_id</strong><br>
+                <span class='tag info'>distribution</span><br>
+                <a href='visualizations/distribution_product_id.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Distribution of price</strong><br>
+                <span class='tag info'>distribution</span><br>
+                <a href='visualizations/distribution_price.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Distribution of stock_quantity</strong><br>
+                <span class='tag info'>distribution</span><br>
+                <a href='visualizations/distribution_stock_quantity.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Distribution of sold_quantity</strong><br>
+                <span class='tag info'>distribution</span><br>
+                <a href='visualizations/distribution_sold_quantity.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Distribution of customer_rating</strong><br>
+                <span class='tag info'>distribution</span><br>
+                <a href='visualizations/distribution_customer_rating.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Distribution of reviews_count</strong><br>
+                <span class='tag info'>distribution</span><br>
+                <a href='visualizations/distribution_reviews_count.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Box Plot of product_id</strong><br>
+                <span class='tag info'>boxplot</span><br>
+                <a href='visualizations/boxplot_product_id.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Box Plot of price</strong><br>
+                <span class='tag info'>boxplot</span><br>
+                <a href='visualizations/boxplot_price.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Box Plot of stock_quantity</strong><br>
+                <span class='tag info'>boxplot</span><br>
+                <a href='visualizations/boxplot_stock_quantity.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Box Plot of sold_quantity</strong><br>
+                <span class='tag info'>boxplot</span><br>
+                <a href='visualizations/boxplot_sold_quantity.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Box Plot of customer_rating</strong><br>
+                <span class='tag info'>boxplot</span><br>
+                <a href='visualizations/boxplot_customer_rating.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Box Plot of reviews_count</strong><br>
+                <span class='tag info'>boxplot</span><br>
+                <a href='visualizations/boxplot_reviews_count.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Correlation Heatmap</strong><br>
+                <span class='tag info'>correlation</span><br>
+                <a href='visualizations/correlation_heatmap.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>Top Values for category</strong><br>
+                <span class='tag info'>bar</span><br>
+                <a href='visualizations/bar_category.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>stock_quantity by category</strong><br>
+                <span class='tag info'>categorical_numeric</span><br>
+                <a href='visualizations/box_stock_quantity_by_category.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>sold_quantity by category</strong><br>
+                <span class='tag info'>categorical_numeric</span><br>
+                <a href='visualizations/box_sold_quantity_by_category.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+            <div class='viz-item'>
+                <strong>reviews_count by category</strong><br>
+                <span class='tag info'>categorical_numeric</span><br>
+                <a href='visualizations/box_reviews_count_by_category.html' class='viz-link' target='_blank'>View Visualization</a>
+            </div>
+        </div>
+
+        <h2>💡 Key Insights</h2>
+
+        <h3>Data Structure</h3>
+        <div class='insight info'>
+            <div class='insight-type'>data_structure</div>
+            <div>Found 6 numeric columns available for statistical analysis</div>
+        </div>
+        <h3>Correlation</h3>
+        <div class='insight info'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong negative correlation (-0.50) found between product_id and price</div>
+        </div>
+        <div class='insight info'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong positive correlation (0.68) found between price and customer_rating</div>
+        </div>
+        <div class='insight warning'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong positive correlation (0.99) found between stock_quantity and sold_quantity</div>
+        </div>
+        <div class='insight info'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong negative correlation (-0.53) found between stock_quantity and customer_rating</div>
+        </div>
+        <div class='insight warning'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong positive correlation (0.98) found between stock_quantity and reviews_count</div>
+        </div>
+        <div class='insight info'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong negative correlation (-0.51) found between sold_quantity and customer_rating</div>
+        </div>
+        <div class='insight warning'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong positive correlation (0.98) found between sold_quantity and reviews_count</div>
+        </div>
+        <div class='insight info'>
+            <div class='insight-type'>correlation</div>
+            <div>Strong negative correlation (-0.59) found between customer_rating and reviews_count</div>
+        </div>
+        <h3>Outlier</h3>
+        <div class='insight warning'>
+            <div class='insight-type'>outlier</div>
+            <div>Detected 4 outlier values across 6 columns</div>
+        </div>
+        <h3>Distribution</h3>
+        <div class='insight info'>
+            <div class='insight-type'>distribution</div>
+            <div>4 columns do not follow normal distribution: price, stock_quantity, sold_quantity</div>
+        </div>
+        <h3>Group Difference</h3>
+        <div class='insight info'>
+            <div class='insight-type'>group_difference</div>
+            <div>Significant differences found in stock_quantity across category groups (p=0.0482)</div>
+        </div>
+        <div class='insight info'>
+            <div class='insight-type'>group_difference</div>
+            <div>Significant differences found in sold_quantity across category groups (p=0.0359)</div>
+        </div>
+        <div class='insight info'>
+            <div class='insight-type'>group_difference</div>
+            <div>Significant differences found in reviews_count across category groups (p=0.0266)</div>
+        </div>
+        <h3>Skewness</h3>
+        <div class='insight info'>
+            <div class='insight-type'>skewness</div>
+            <div>3 columns show significant skewness: price, stock_quantity, sold_quantity</div>
+        </div>
+        <h3>Visualization Summary</h3>
+        <div class='insight info'>
+            <div class='insight-type'>visualization_summary</div>
+            <div>Generated 17 visualizations: 6 distribution, 6 boxplot, 1 correlation, 1 bar, 3 categorical_numeric</div>
+        </div>
+        <h3>Distribution Insights</h3>
+        <div class='insight info'>
+            <div class='insight-type'>distribution_insights</div>
+            <div>Visualized 6 distributions; 4 appear non-normal and may need transformation</div>
+        </div>
+        <h3>Outlier Insights</h3>
+        <div class='insight warning'>
+            <div class='insight-type'>outlier_insights</div>
+            <div>Box plots reveal outliers in 3 columns</div>
+        </div>
+        <h3>Group Difference Insights</h3>
+        <div class='insight info'>
+            <div class='insight-type'>group_difference_insights</div>
+            <div>Visualized 3 significant group differences</div>
+        </div>
+        <p><strong>Total Insights:</strong> 19</p>
+        <hr>
+        <p style='color: #7f8c8d; text-align: center;'>
+            Generated by DataForge AI on 2026-08-01 at 03:08:28
+        </p>
+    </div>
+</body>
+</html>

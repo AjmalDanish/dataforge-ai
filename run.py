@@ -68,39 +68,39 @@ async def run_analysis(dataset_path: str, output_dir: str | None = None) -> int:
             steps_completed = final_state.get("steps_completed", [])
             data = final_state.get("data", {})
 
-            print(f"✓ Dataset Loaded")
+            print(f"[OK] Dataset Loaded")
             print(
-                f"✓ Profiling Complete ({len(data.get('profile', {}).get('columns', {}))} columns)"
+                f"[OK] Profiling Complete ({len(data.get('profile', {}).get('columns', {}))} columns)"
             )
             print(
-                f"✓ Statistics Complete ({len(data.get('statistics', {}).get('descriptive_stats', {}))} columns analyzed)"
+                f"[OK] Statistics Complete ({len(data.get('statistics', {}).get('descriptive_stats', {}))} columns analyzed)"
             )
             print(
-                f"✓ Visualizations Generated ({len(data.get('visualizations', []))} interactive charts)"
+                f"[OK] Visualizations Generated ({len(data.get('visualizations', []))} interactive charts)"
             )
-            print(f"✓ Report Generated")
-            print(f"✓ Workflow Finished")
-            print(f"✓ Execution duration: {duration:.2f}s")
+            print(f"[OK] Report Generated")
+            print(f"[OK] Workflow Finished")
+            print(f"[OK] Execution duration: {duration:.2f}s")
 
             # Check for report
             report = data.get("report")
             if report and report.get("html_path"):
-                print(f"\n📊 Analysis complete!")
+                print(f"\n[SUCCESS] Analysis complete!")
                 print(f"   HTML Report: {report['html_path']}")
                 print(f"   JSON Report: {report['json_path']}")
                 print(f"   Visualizations: {output_path}/visualizations/")
                 print(f"   Logs: {output_path}/execution_*.log")
                 return 0
             else:
-                print("\n⚠️ Analysis completed but no report generated")
+                print("\n[WARNING] Analysis completed but no report generated")
                 return 1
 
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"[ERROR] Error: {e}")
             return 1
 
     except KeyboardInterrupt:
-        print("\n⚠️ Analysis interrupted by user")
+        print("\n[INFO] Analysis interrupted by user")
         return 1
 
 
