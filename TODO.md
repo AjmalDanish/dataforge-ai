@@ -11,15 +11,11 @@
 - [x] 🔴 **`execute.py`**: Define `verbose` variable before the try-except block on line 97 — currently raises `NameError`
 - [x] 🔴 **`run.py`**: Remove broken `from dataforge.presentation.cli import analyze_sync` import — that symbol does not exist
 - [x] 🔴 **`run.py`**: Fix undefined `verbose` and `output` references inside the inner `analyze_sync` closure — or replace `run.py` with a clean `asyncio.run(workflow.ainvoke(...))` wrapper
-- [ ] 🔴 **`langgraph` version**: Upgrade `langgraph` from `^0.0.20` to the current stable version in `pyproject.toml` and verify all LangGraph API calls remain compatible
 
 ---
 
 ## ARCHITECTURE
 
-- [ ] 🟠 **LLM Integration**: Wire `LLMProvider` into at least one agent — `PlannerAgent` is the natural candidate for LLM-assisted routing decisions; without this the "AI-powered" claim is unfounded
-- [ ] 🟠 **Resource limits**: Enforce `max_file_size_mb` and `max_rows` in `DataIngestionAgent` (settings values exist but are never checked)
-- [ ] 🟠 **Per-agent timeout**: Implement `asyncio.wait_for()` wrappers around each agent's `execute()` call using `settings.execution_timeout`
 - [ ] 🟠 **Make hardcoded thresholds configurable**: Move these from agent source code into `Settings`:
   - Categorical detection threshold (<=10 unique or <20% ratio) — `profiling.py`
   - Correlation significance threshold (`|r| > 0.5`) — `statistics.py`
@@ -144,6 +140,15 @@
 - [ ] 🟡 **`CONTRIBUTING.md`**: Write contribution guide covering setup, coding standards, and PR process
 - [ ] 🟢 **`SECURITY.md`**: Document the security policy and responsible disclosure process
 - [ ] 🟢 **Dependabot**: Enable Dependabot for automatic dependency update PRs
+
+---
+
+## VERSION 1.1 FEATURES (Post-Release Enhancements)
+
+- [ ] 🟢 **`langgraph` version**: Upgrade `langgraph` from `^0.0.20` to the current stable version in `pyproject.toml` and verify all LangGraph API calls remain compatible
+- [ ] 🟢 **LLM Integration**: Wire `LLMProvider` into at least one agent — `PlannerAgent` is the natural candidate for LLM-assisted routing decisions; without this the "AI-powered" claim is unfounded
+- [ ] 🟢 **Resource limits**: Enforce `max_file_size_mb` and `max_rows` in `DataIngestionAgent` (settings values exist but are never checked)
+- [ ] 🟢 **Per-agent timeout**: Implement `asyncio.wait_for()` wrappers around each agent's `execute()` call using `settings.execution_timeout`
 
 ---
 

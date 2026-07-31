@@ -103,8 +103,18 @@ class Agent(ABC):
                     result_message=result.message,
                 )
 
+            # Add log to state
+            updated_state = state.add_log(
+                level="INFO",
+                agent=self.name,
+                message=f"Completed {self.name}",
+                decision=result.decision.value,
+                duration_seconds=duration,
+                result_message=result.message,
+            )
+
             # Update state with agent result
-            updated_state = state.add_agent_result(
+            updated_state = updated_state.add_agent_result(
                 self.name,
                 {
                     "success": result.decision != AgentDecision.ERROR,
@@ -135,12 +145,22 @@ class Agent(ABC):
                     duration_seconds=duration,
                 )
 
+            # Add error log to state
+            updated_state = state.add_log(
+                level="ERROR",
+                agent=self.name,
+                message=f"{self.name} failed",
+                error_type=type(e).__name__,
+                error_message=str(e),
+                duration_seconds=duration,
+            )
+
             error_result = AgentResult(
                 decision=AgentDecision.ERROR,
                 message=f"{self.name} failed: {str(e)}",
             )
 
-            updated_state = state.add_agent_result(
+            updated_state = updated_state.add_agent_result(
                 self.name,
                 {
                     "success": False,
