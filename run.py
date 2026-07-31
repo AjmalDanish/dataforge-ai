@@ -1,102 +1,121 @@
 #!/usr/bin/env python3
 """Entry point for running DataForge AI from command line."""
 
+import os
 import sys
-import asyncio
-
+import time
 from pathlib import Path
 
-# Try to import from the dataforge package
-try:
-    sys.path.insert(0, str(Path(__file__).parent))
-    from dataforge.presentation.cli import analyze_sync as run_analysis
-    from dataforge.core.state import GraphState
-except ImportError as e:
-    print(f"Import error: {e}")
-    print("Make sure dataforge is installed or run with: python -m dataforge")
-    sys.exit(1)
 
-
-async def run_cli_analysis(dataset_path: str) -> int:
-    """Run CLI analysis workflow."""
-    import sys
-    from pathlib import Path
-    from dataforge.presentation.cli import analyze
-    import click
-
-    dataset_path_obj = Path(dataset_path)
-
-    # Create click context to run analyze function synchronously
-    from click.testing import CliRunner
-
-    @click.command()
-    @click.argument(
-        "dataset_path",
-        type=click.Path(exists=True),
-        required=True,
-    )
-    @click.option(
-        "--output",
-        "-o",
-        type=click.Path(path_type=Path),
-        default=None,
-    )
-    @click.option(
-        "--verbose",
-        "-v",
-        is_flag=True,
-    )
-    def analyze_sync(dataset_path, output, verbose) -> int:
-        """Synchronous wrapper."""
-        return 0
-
-    runner = CliRunner()
-    result = runner.invoke(
-        analyze_sync,
-        [str(dataset_path), "--output", output or None] + (["--verbose"] if verbose else []),
-        standalone_mode=False,
-        catch_exceptions=False,
-    )
-
-    return result.exit_code or 0
-
-
-def run_analysis(dataset_path: str) -> int:
-    """Run analysis on dataset synchronously.
+async def run_analysis(dataset_path: str, output_dir: str | None = None) -> int:
+    """Run analysis on dataset.
 
     Args:
         dataset_path: Path to dataset file.
+        output_dir: Output directory for reports and visualizations.
 
     Returns:
         Exit code (0 for success, 1 for failure).
     """
-    import os
-    import sys
-    from pathlib import Path
+    # Set up environment
+    os.environ.setdefault("OPENAI_API_KEY", "sk-dummy-key-for-testing")
 
-    # Set working directory to repository root
-    os.chdir(Path(__file__).parent)
+    # Add dataforge to path
+    sys.path.insert(0, str(Path(__file__).parent))
 
-    dataset_path_obj = Path(dataset_path)
+    try:
+        # Import dataforge components
+        from dataforge.graph.workflow import create_graph
+        from dataforge.core.state import GraphState
+        from dataforge.core.logger import StructuredLogger
 
-    if not dataset_path_obj.exists():
-        click.echo(f"Error: Dataset not found: {dataset_path}", err=True)
+        # Set up output directory
+        dataset_obj = Path(dataset_path)
+        if output_dir is None:
+            output_dir = str(dataset_obj.parent / "output")
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Create state
+        state = GraphState(
+            input_dataset_path=dataset_path,
+            output_dir=output_dir,
+        )
+
+        # Initialize logger
+        logger = StructuredLogger("cli", output_dir)
+
+        # Create workflow
+        workflow = create_graph()
+
+        print(f"DataForge AI v1.0.0")
+        print(f"Dataset: {dataset_path}")
+        print(f"Output: {output_dir}")
+        print(f"Starting analysis...")
+        print("")
+
+        # Execute workflow
+        start_time = time.time()
+
+        try:
+            # Execute workflow with recursion limit
+            final_state = await workflow.ainvoke(state, {"recursion_limit": 25})
+
+            duration = time.time() - start_time
+
+            # Print results summary
+            steps_completed = final_state.get("steps_completed", [])
+            data = final_state.get("data", {})
+
+            print(f"✓ Dataset Loaded")
+            print(
+                f"✓ Profiling Complete ({len(data.get('profile', {}).get('columns', {}))} columns)"
+            )
+            print(
+                f"✓ Statistics Complete ({len(data.get('statistics', {}).get('descriptive_stats', {}))} columns analyzed)"
+            )
+            print(
+                f"✓ Visualizations Generated ({len(data.get('visualizations', []))} interactive charts)"
+            )
+            print(f"✓ Report Generated")
+            print(f"✓ Workflow Finished")
+            print(f"✓ Execution duration: {duration:.2f}s")
+
+            # Check for report
+            report = data.get("report")
+            if report and report.get("html_path"):
+                print(f"\n📊 Analysis complete!")
+                print(f"   HTML Report: {report['html_path']}")
+                print(f"   JSON Report: {report['json_path']}")
+                print(f"   Visualizations: {output_path}/visualizations/")
+                print(f"   Logs: {output_path}/execution_*.log")
+                return 0
+            else:
+                print("\n⚠️ Analysis completed but no report generated")
+                return 1
+
+        except Exception as e:
+            print(f"❌ Error: {e}")
+            return 1
+
+    except KeyboardInterrupt:
+        print("\n⚠️ Analysis interrupted by user")
         return 1
-
-    # Set up minimal environment for execution
-    if os.getenv("OPENAI_API_KEY") is None:
-        # Allow mock execution for demonstration without API keys
-        os.environ["OPENAI_API_KEY"] = "sk-dummy-key-for-testing"
-
-    return asyncio.run(run_cli_analysis(dataset_path))
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python run.py <dataset_path>")
-        print("Example: python run.py datasets/employees.csv")
+        print("Usage: python run.py <dataset_path> [output_dir]")
+        print("\nExample:")
+        print("  python run.py datasets/employees.csv")
+        print("  python run.py datasets/products.csv ./output")
         sys.exit(1)
 
     dataset_path = sys.argv[1]
-    exit_code = run_analysis(dataset_path)
+    output_dir = sys.argv[2] if len(sys.argv) > 2 else None
+
+    import asyncio
+
+    exit_code = asyncio.run(run_analysis(dataset_path, output_dir))
     sys.exit(exit_code)
