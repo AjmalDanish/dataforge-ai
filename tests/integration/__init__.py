@@ -1,3 +1,11 @@
-"""Integration tests."""
+"""End-to-end integration tests for the complete workflow."""
 
-__all__ = []
+import os
+from pathlib import Path
+
+import pytest
+
+from dataforge.graph.workflow import create_graph
+from dataforge.core.state import GraphState
+
+__all__ = ["TestEndToEndWorkflow"]

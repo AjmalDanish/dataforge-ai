@@ -1,66 +1,65 @@
-# DataForge AI
+# DataForge AI v1.0.0
 
 > Autonomous Multi-Agent Data Science Platform powered by True Graph Engineering
 
-[![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Code Style](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+---
 
-**DataForge AI** is an autonomous platform that orchestrates specialized AI agents through a **true branching graph workflow** to analyze structured datasets. Simply provide a dataset file, and DataForge AI will dynamically plan, execute, validate, and report insights—completely autonomously.
+![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
+![Coverage](https://img.shields.io/badge/coverage-76%25-green.svg)
+![Status](https://img.shields.io/badge/status-RC--orange.svg)
+![Agents](https://img.shields.io/badge/agents-7-blue.svg)
+
+**DataForge AI** is an autonomous platform that orchestrates 7 specialized AI agents through a true branching graph workflow to analyze structured datasets. Simply provide a dataset file, and DataForge AI will dynamically plan, execute, validate, and report insights—completely autonomously.
 
 This is **not** a chatbot. This is **not** AutoML. This is **not** a linear pipeline. This is an autonomous AI system with intelligent decision-making at every step.
 
+---
+
 ## 🚀 Quick Start
 
+### Installation
+
 ```bash
-# Install
-pip install dataforge-ai
+# Install via pip (from source)
+pip install -e \"langgraph>=0.0.0\"
 
-# Set your API key
-export OPENAI_API_KEY="sk-..."
+# Install with dependencies
+pip install langgraph pandas plotly scipy pyarrow pydantic openai anthropic
 
-# Analyze a dataset
-dataforge analyze data.csv
+# Clone and setup
+git clone https://github.com/yourusername/dataforge-ai.git
+cd dataforge-ai
+pip install -e -r -e .
 ```
 
-Output:
-- `report.md` - Markdown report with insights
-- `report.html` - Interactive HTML report
-- `visualizations/` - Publication-quality charts
-- `execution_*.log` - Structured execution logs
+### Usage
 
-## ✨ Features
+**Basic Analysis**
+```bash
+python run.py datasets/employees.csv
+```
 
-- **True Graph Workflow**: Dynamic agent selection with branching (not a linear pipeline)
-- **Planner Agent**: Intelligent decision-making adapts to your data
-- **Validation Loops**: Quality assurance with automatic remediation
-- **7 Specialized Agents**: Planner, Evaluator, Ingestion, Profiling, Statistics, Visualization, Reporting
-- **Vendor-Agnostic**: Abstract LLM interface (OpenAI, Anthropic, extensible)
-- **Built-in Observability**: Structured logging for every operation
-- **Privacy First**: Data never leaves your environment (except LLM API calls)
+**With Custom Output Directory**
+```bash
+python run.py datasets/employees.csv ./my_output
+```
 
-## 📋 What DataForge AI Does
+**Verbose Mode**
+```bash
+python run.py datasets/employees.csv --verbose
+```
 
-Given a structured dataset, DataForge AI will:
+---
 
-1. **Plan** - Analyze requirements and determine execution path
-2. **Ingest** - Read and validate your data
-3. **Profile** - Understand structure, types, and characteristics
-4. **Analyze** - Compute statistics, correlations, and detect patterns
-5. **Validate** - Check quality and request additional analysis if needed
-6. **Visualize** - Generate relevant, publication-quality charts
-7. **Report** - Compile comprehensive insights with explanations
+## ✨ Key Features
 
-All with intelligent decision-making at every step. All without coding.
+### 1. True Graph Workflow
 
-## 🏗️ Architecture
-
-DataForge AI is built on **Clean Architecture** principles with:
-
-- **True Graph Orchestration**: Dynamic branching via LangGraph
-- **Centralized State**: Unified GraphState shared by all agents
-- **Abstract Interfaces**: Vendor-agnostic LLM integration
-- **Built-in Observability**: Structured logging throughout
+- **Dynamic Branching**: The Planner Agent intelligently routes between agents based on data characteristics
+- **No Linear Pipeline**: Each agent makes decisions about what to do next
+- **Self-Optimizing**: Automatically skips unnecessary steps (e.g., statistics for non-numeric data)
+- **Quality Gates**: EvaluatorAgent validates output quality with automatic retry logic
 
 ```
                     ┌─────────────┐
@@ -76,126 +75,330 @@ DataForge AI is built on **Clean Architecture** principles with:
               │            │            │
               ▼            ▼            ▼
        ┌──────────┐  ┌──────────┐  ┌──────────┐
-       │Ingestion │  │Profiling │  │Statistics│
-       │  Agent   │  │  Agent   │  │  Agent   │
-       └────┬─────┘  └────┬─────┘  └────┬─────┘
+       │Ingestion│  │Profiling│  │Statistics│  │Evaluation│
+       │  Agent   │  Agent   │  │   Agent   │ │  Agent   │
+       └──────────┘  └──────────┘  └──────────┘  └──────────┘
             │            │            │
-            └─────┬──────┴─────┬──────┘
-                  │            │
-                  ▼            ▼
-           ┌─────────────┐ ┌─────────────┐
-           │Visualization│ │ Evaluator  │ ← Quality check
-           │   Agent     │ │   Agent     │   (can retry)
-           └──────┬──────┘ └──────┬──────┘
+            ▼            ▼            ▼
+       ┌─────────────┐ ┌─────────────┐
+       │Visualization│ │  Reporting│
+       │   Agent     │ │   Agent     │
+       └──────┬──────┘  └──────┬──────┘
                   │              │
-                  └──────┬───────┘
-                         │
-                  ┌─────────────┐
-                  │  Reporting  │
-                  │   Agent     │
-                  └──────┬──────┘
-                         │
-                    ┌─────────┐
-                    │   END   │
-                    └─────────┘
+                  ▼
+           ┌─────────────┐
+           │  Reporting  │
+           │   Agent     │
+           └─────────────┘
+
+            │
+           ┌─────────┐
+            │   END   │
+            └─────────┘
 ```
+
+### 2. 7 Specialized AI Agents
+
+| Agent | Role | Key Capabilities |
+|-------|------|-------------------|
+| **PlannerAgent** | Decision Engine | Routes workflow, handles retry logic, decides next action |
+| **EvaluatorAgent** | Quality Control | Validates analysis quality, triggers remediation on failure |
+| **DataIngestionAgent** | Data Loading | CSV/Parquet support, encoding fallback |
+| **DataProfilingAgent** | Understanding | Semantic type detection, missing value analysis |
+| **StatisticalAnalysisAgent** | Number Crunching | Descriptive stats, correlations, outlier detection |
+| **VisualizationAgent** | Visual Storytelling | Interactive HTML plots, publication-quality charts |
+| **ReportingAgent** | Comprehensive Documentation | HTML + JSON reports with insights |
+
+### 3. Smart Features
+
+- **Adaptive Planning**: Skips statistics for non-numeric datasets
+- **Quality Gates**: Automatic retry logic (max 3 retries)
+- **Encoding Fallback**: UTF-8 → Latin-1 → CP1252 for international data
+- **Vendor-Agnostic**: Works with OpenAI and Anthropic (extensible to others)
+- **Comprehensive Logging**: Structured logging with timestamps for debugging
+- **Observability**: All operations logged with agent, duration, and decision data
+
+### 4. Technology Stack
+
+- **Python 3.11+** with type hints
+- **LangGraph** for graph orchestration
+- **Pandas** for data manipulation
+- **Plotly** for interactive visualizations
+- **SciPy** for statistical tests
+- **PyArrow** for Parquet support
+- **Pydantic** for data validation
+- **OpenAI** or **Anthropic** for LLM providers
+- **Click** for CLI interface
+
+---
+
+## 🏗️ Architecture
+
+### Clean Architecture
+
+```
+dataforge/
+├── agents/               # 7 specialized agents
+│   ├── base.py              # Base agent abstract class
+│   ├── planner.py           # Decision engine
+│   ├── evaluator.py         # Quality validation
+│   ├── ingestion.py         # Data loading
+│   ├── profiling.py         # Column analysis
+│   ├── statistics.py        # Statistical analysis
+│   ├── visualization.py       # Visualizations
+│   └── reporting.py          # Report generation
+├── core/                 # Core infrastructure
+│   ├── llm.py               # LLM abstraction
+│   ├── logger.py             # Structured logging
+│   ├── state.py             # State management
+│   └── __init__.py
+├── graph/                # Workflow orchestration
+│   ├── workflow.py          # LangGraph definition
+│   └── __init__.py
+├── infrastructure/        # External integrations
+│   └── llm_providers/       # LLM providers
+│       ├── openai.py           # OpenAI provider
+│       └── anthropic.py        #  Anthropic provider
+├── presentation/         # User interfaces
+│   ├── cli.py              # CLI interface
+│   └── __init__.py
+└── shared/               # Shared utilities
+    ├── config.py             # Settings
+    ├── errors.py             # Custom exceptions
+    └── utils.py              # Helper functions
+```
+
+### GraphState Model
+
+```python
+class GraphState(BaseModel):
+    # Immutable Input
+    input_dataset_path: str
+    input_query: str | None = None
+    output_dir: str = "./output"
+
+    # Mutable Data (single source of truth)
+    data: dict[str, Any] = Field(
+        default_factory=dict,
+        description="All analysis data stored as key-value pairs"
+    )
+
+    # Execution Context
+    execution_id: str
+    steps_completed: list[str] = Field(default_factory=list)
+    agent_history: list[dict[str, Any]] = Field(default_factory=list)
+
+    # Validation & Retry
+    validation_status: str = "pending"
+    retry_count: int = 0
+    max_retries: int = 3
+
+    # Observability
+    logs: list[dict[str, Any]] = Field(default_factory=list)
+    metrics: dict[str, Any] = Field(default_factory=dict)
+
+    # Timing
+    start_time: str
+    end_time: str | None = None
+
+    # Methods
+    def get(key: str, default=None) -> Any: get()
+    def set(key, value) -> set()
+    def add_log(level, agent, message, **kwargs) -> add_log()
+    def add_agent_result(agent_name: str, result: dict) -> add_agent_result()
+    def update_step(step: str) -> update_step()
+    def increment_retry() -> increment_retry()
+    def add_metric(key, value) -> add_metric()
+    def mark_complete() -> mark_complete()
+```
+
+---
+
+## 📊 Example Output
+
+### Sample Dataset
+
+**datasets/employees.csv** (15 rows × 8 columns)
+
+| id | name | age | department | salary | years_of_service | performance_score | remote_worker |
+|----|------|-----|-------------|--------|-----------------|------------------|---------------|
+| 1 | Alice Johnson | 28 | Engineering | 75000.0 | 2 | 8.5 | True |
+| 2 | Bob Smith | 35 | Sales | 65000.0 | 5 | 7.2 | False |
+| 3 | Charlie Brown | 42 | Engineering | 95000.0 | 10 | 9.1 | True |
+
+### Generated Output
+
+```
+output/employees/
+├── report.html                    # Interactive HTML report
+├── report.json                    # Machine-readable JSON
+├── execution_*.log                # Structured execution logs
+└── visualizations/                # Generated charts
+    ├── distribution_*.html           # Distribution plots
+    ├── boxplot_*.html              # Box plots
+    ├── correlation_heatmap.html        # Correlation matrix
+    ├── scatter_*.html              # Scatter plots
+    └── bar_*.html                  # Bar charts
+```
+
+### Example HTML Report
+
+- **Profile Section**: Data shape, column types, missing value analysis
+- **Statistics Section**: Descriptive statistics, correlations, outliers, distribution tests
+- **Visualizations Section**: Interactive charts with filtering
+- **Insights Section**: Data quality, statistics, correlations, visualization insights
+
+---
+
+## 📖 Documentation
+
+### Core Documentation
+- **[ARCHITECTURE.md](docs/ARCHITECTURE.md) - Complete system architecture
+- **[AGENTS.md](docs/agents.md) - All 7 agents and workflow
+- **[GRAPH_DESIGN.md](docs/graph_design.md) - LangGraph workflow design
+- **[REQUIREMENTS.md](docs/requirements.md) - Functional and non-functional requirements
+- **[DEVELOPMENT.md](docs/development_guide.md) - Development guide and coding standards
+
+### Project Documentation
+- **[PHASE1_SUMMARY.md](PHASE1_SUMMARY.md) - Phase 1 summary
+- **[PHASE2_SUMMARY.md](PHASE2_SUMMARY.md) - Phase 2 summary
+- **[FINAL_ENGINEERING_AUDIT.md](FINAL_ENGINEERING_AUDIT.md) - Engineering audit summary
+
+---
 
 ## 🔧 Installation
-
-### From PyPI (Coming Soon)
-
-```bash
-pip install dataforge-ai
-```
-
-### From Source
-
-```bash
-git clone https://github.com/yourusername/dataforge-ai.git
-cd dataforge-ai
-poetry install
-```
 
 ### Requirements
 
 - Python 3.11 or higher
 - OpenAI or Anthropic API key
 - 2GB RAM minimum
+- 100MB maximum file size
 
-## 📖 Usage
-
-### Basic Analysis
-
-```bash
-dataforge analyze path/to/dataset.csv
-```
-
-### Specify Output Directory
+### Quick Start
 
 ```bash
-dataforge analyze data.csv --output ./results
+# Install dependencies
+pip install langgraph pandas plotly scipy pyarrow pydantic openai anthropic
+
+# Run analysis
+python run.py datasets/employees.csv
 ```
 
-### Use Anthropic Instead of OpenAI
+---
+
+## 🛠️ Known Limitations
+
+### Technical
+- No caching mechanism (computations not cached)
+- No file size or row count limits
+- No timeout enforcement
+- No parallel execution
+- No checkpoint/save state for recovery
+- No deadlock detection
+- No circuit breaker patterns
+
+### Data Processing
+- Supports only CSV and Parquet (no Excel, JSON, etc.)
+- No streaming support
+- No database connectors (file-based only)
+- No support for very large datasets (>1M rows)
+- No incremental updates
+
+### ML/AI Features
+- No predictive models (statistical analysis only)
+- No ML model training
+- No hyperparameter optimization
+- No feature importance analysis
+- No time series analysis
+- No clustering
+
+### Development
+- TODO comments removed (CLI workflow is now functional)
+- No type checking on Windows (mypy doesn't run)
+- No performance benchmarks
+- No stress tests
+- No chaos engineering tests
+
+---
+
+## 🚦 Quick Start Guide
+
+### 1. Create test data
+
+Create `test.csv`:
+
+```python
+import pandas as pd
+
+df = pd.DataFrame({
+    "id": [1, 2, 3],
+    "name": ["Alice", "Bob", "Charlie"],
+    "age": [25, 30, 35],
+    "salary": [50000, 60000, 70000]
+})
+
+df.to_csv("test.csv", index=False)
+```
+
+### 2. Run analysis
 
 ```bash
-dataforge analyze data.csv --provider anthropic
+python run.py test.csv ./output
 ```
 
-### Verbose Logging
+### 3. Check outputs
 
 ```bash
-dataforge analyze data.csv --verbose
+ls -la output/
+# report.html    # Comprehensive HTML report
+# visualizations/*.html  # Interactive charts
+# execution_*.log  # Structured logs
 ```
 
-## 📊 Example Output
+---
 
-After analysis, you'll find:
+## 📁 Demo Datasets
 
-```
-output/
-├── report.md              # Markdown report
-├── report.html            # HTML report
-├── execution_*.log        # Execution log
-├── logs_*.json            # Structured logs (JSON)
-└── visualizations/        # Generated charts
-    ├── histogram_*.png
-    ├── bar_*.png
-    ├── heatmap_correlations.png
-    └── scatter_*.png
-```
+### datasets/employees.csv (15 rows × 8 columns)
+
+Employee demographics with salary and performance data.
+
+### datasets/products.csv (20 rows × 8 columns)
+
+Product sales data with price, inventory, and ratings.
+
+---
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see [DEVELOPMENT.md](docs/DEVELOPMENT.md) for guidelines.
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## 📚 Documentation
+---
 
-### Core Documentation
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - Complete system architecture, components, and principles
-- **[REQUIREMENTS.md](docs/REQUIREMENTS.md)** - Functional and non-functional requirements
-- **[AGENTS.md](docs/AGENTS.md)** - All 7 agents and true graph workflow
-- **[VISION.md](docs/VISION.md)** - Project vision and 5-year roadmap
-- **[DEVELOPMENT.md](docs/DEVELOPMENT.md)** - Development guide and coding standards
+## 📄 License
 
-### Architecture Review
-- **[ARCHITECTURE_REVIEW.md](ARCHITECTURE_REVIEW.md)** - Critical review, changes, and rationale
+MIT License - see [LICENSE](LICENSE) for details.
 
-## 🗺️ Roadmap
+---
 
-### v1.0 (Current - 5 Day Sprint)
-- ✅ Architecture complete
-- 🔄 Core infrastructure
-- ⏳ 7 specialized agents
-- ⏳ True graph workflow with Planner
-- ⏳ CLI interface
-- ⏳ CSV/Parquet support
+## ⭐ Star History
+
+If you find DataForge AI useful, please consider giving it a star!
+
+---
+
+**Built with ❤️ for the data science community**
+
+---
+
+## 🏗️ Roadmap
 
 ### v1.5 (Planned)
 - Custom agent plugins
-- Analysis templates
 - Enhanced visualizations
 - More export formats
+- Better CLI interface
 
 ### v2.0 (Planned)
 - Web interface
@@ -205,39 +408,6 @@ We welcome contributions! Please see [DEVELOPMENT.md](docs/DEVELOPMENT.md) for g
 
 See [VISION.md](docs/VISION.md) for details.
 
-## 🌟 What Makes DataForge AI Different?
-
-| Feature | DataForge AI | Chatbots | AutoML | Linear Pipelines |
-|---------|--------------|----------|--------|-----------------|
-| Autonomous Analysis | ✅ | ❌ | ❌ | ✅ |
-| Dynamic Decision Making | ✅ | ❌ | ❌ | ❌ |
-| Validation Loops | ✅ | ❌ | ❌ | ❌ |
-| Complete Reports | ✅ | ❌ | ❌ | ❌ |
-| True Graph Workflow | ✅ | ❌ | ❌ | ❌ |
-| Vendor-Agnostic LLM | ✅ | ❌ | ❌ | ✅ |
-| Built-in Observability | ✅ | ❌ | ❌ | ✅ |
-| Multi-Agent System | ✅ | ❌ | ❌ | ✅ |
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- [LangGraph](https://github.com/langchain-ai/langgraph) - Graph orchestration
-- [Pandas](https://pandas.pydata.org/) - Data manipulation
-- [Plotly](https://plotly.com/) - Visualization
-- [OpenAI](https://openai.com/) & [Anthropic](https://www.anthropic.com/) - LLM providers
-
-## 📮 Contact
-
-- GitHub Issues: [Report bugs and request features](https://github.com/yourusername/dataforge-ai/issues)
-- Discussions: [Ask questions and share ideas](https://github.com/yourusername/dataforge-ai/discussions)
-
-## ⭐ Star History
-
-If you find DataForge AI useful, please consider giving it a star!
-
 ---
 
-**Built with ❤️ for the data science community**
+**🎉 Version 1.0.0 is a Release Candidate!**
