@@ -7,7 +7,7 @@
 ## CRITICAL BLOCKERS (Must fix before any user can run the system)
 
 - [x] 🔴 **`config.py`**: Add `from typing import Optional` (or replace `Optional[str]` with `str | None`) — currently causes `NameError` on import, breaking the entire application
-- [ ] 🔴 **`cli.py` `analyze` command**: Wrap `await workflow.ainvoke()` in `asyncio.run()` — the `await` in a synchronous Click handler is invalid and crashes at runtime
+- [x] 🔴 **`cli.py` `analyze` command**: Wrap `await workflow.ainvoke()` in `asyncio.run()` — the `await` in a synchronous Click handler is invalid and crashes at runtime
 - [ ] 🔴 **`execute.py`**: Define `verbose` variable before the try-except block on line 97 — currently raises `NameError`
 - [ ] 🔴 **`run.py`**: Remove broken `from dataforge.presentation.cli import analyze_sync` import — that symbol does not exist
 - [ ] 🔴 **`run.py`**: Fix undefined `verbose` and `output` references inside the inner `analyze_sync` closure — or replace `run.py` with a clean `asyncio.run(workflow.ainvoke(...))` wrapper

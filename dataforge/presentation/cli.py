@@ -28,6 +28,72 @@ def cli() -> None:
     pass
 
 
+async def _execute_workflow(
+    state: GraphState,
+    logger: StructuredLogger,
+    verbose: bool,
+) -> None:
+    """Execute the workflow asynchronously.
+
+    Args:
+        state: The graph state.
+        logger: The structured logger.
+        verbose: Whether to enable verbose output.
+    """
+    from dataforge.graph.workflow import create_graph
+
+    workflow = create_graph()
+    start_time = time.time()
+
+    logger.info("Starting workflow execution", agent="CLI")
+
+    # Execute workflow
+    final_state = await workflow.ainvoke(state, {"recursion_limit": 25})
+
+    duration = time.time() - start_time
+
+    # Check for successful completion
+    steps_completed = final_state.get("steps_completed", [])
+    if "ReportingAgent" in steps_completed:
+        click.echo("✓ Dataset Loaded")
+        click.echo("✓ Profiling Complete")
+        click.echo("✓ Statistics Complete")
+        click.echo("✓ Visualizations Generated")
+        click.echo("✓ Report Generated")
+        click.echo("✓ Workflow Finished")
+        click.echo(f"✓ Execution duration: {duration:.2f}s")
+        click.echo("")
+        click.echo(f"📊 Analysis complete! Report saved to: {state.output_dir}/report.html")
+        # Export logs
+        log_file = logger.export_logs()
+        logger.info("Logs exported", log_file=str(log_file))
+        click.echo(f"✓ Logs saved to: {log_file}")
+        sys.exit(0)
+
+    else:
+        # Workflow didn't complete
+        click.echo("⚠ Workflow did not complete successfully")
+        click.echo(f"Completed steps: {steps_completed}")
+
+        # Check for errors in agent history
+        errors = []
+        for entry in final_state.get("agent_history", []):
+            if not entry.get("result", {}).get("success", False):
+                errors.append(
+                    (
+                        entry["agent"],
+                        entry.get("result", {}).get("message", "Unknown error"),
+                    )
+                )
+
+        if errors:
+            click.echo("\nErrors encountered:")
+            for agent, message in errors:
+                click.echo(f"  - {agent}: {message}")
+
+        sys.exit(1)
+
+
 @cli.command()
 @click.argument(
     "dataset_path",
@@ -121,61 +187,8 @@ def analyze(
 
         logger.info("LLM provider created", provider=llm_provider.provider_name)
 
-        # Create and execute workflow
-        from dataforge.graph.workflow import create_graph
-
-        workflow = create_graph()
-        start_time = time.time()
-
         try:
-            logger.info("Starting workflow execution", agent="CLI")
-
-            # Execute workflow
-            final_state = await workflow.ainvoke(state, {"recursion_limit": 25})
-
-            duration = time.time() - start_time
-
-            # Check for successful completion
-            steps_completed = final_state.get("steps_completed", [])
-            if "ReportingAgent" in steps_completed:
-                click.echo("✓ Dataset Loaded")
-                click.echo("✓ Profiling Complete")
-                click.echo("✓ Statistics Complete")
-                click.echo("✓ Visualizations Generated")
-                click.echo("✓ Report Generated")
-                click.echo("✓ Workflow Finished")
-                click.echo(f"✓ Execution duration: {duration:.2f}s")
-                click.echo("")
-                click.echo(f"📊 Analysis complete! Report saved to: {output_dir}/report.html")
-
-                # Export logs
-                log_file = logger.export_logs()
-                logger.info("Logs exported", log_file=str(log_file))
-                click.echo(f"✓ Logs saved to: {log_file}")
-                sys.exit(0)
-
-            else:
-                # Workflow didn't complete
-                click.echo("⚠ Workflow did not complete successfully")
-                click.echo(f"Completed steps: {steps_completed}")
-
-                # Check for errors in agent history
-                errors = []
-                for entry in final_state.get("agent_history", []):
-                    if not entry.get("result", {}).get("success", False):
-                        errors.append(
-                            (
-                                entry["agent"],
-                                entry.get("result", {}).get("message", "Unknown error"),
-                            )
-                        )
-
-                if errors:
-                    click.echo("\nErrors encountered:")
-                    for agent, message in errors:
-                        click.echo(f"  - {agent}: {message}")
-
-                sys.exit(1)
+            asyncio.run(_execute_workflow(state, logger, verbose))
 
         except Exception as e:
             logger.error(
