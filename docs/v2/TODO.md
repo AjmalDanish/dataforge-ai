@@ -100,9 +100,9 @@ Sprint-based development
 - [x] ✅ ExecutionPhase IntEnum
 
 ### Infrastructure Interfaces
-- [ ] 🟠 FileReader ABC (read, validate_format)
-- [ ] 🟠 ChartEngine ABC (create_bar, create_line, create_scatter, etc.)
-- [ ] 🟠 ReportRenderer ABC (render_html, render_pdf, render_json)
+- [x] ✅ FileReader ABC (read, validate_format)
+- [x] ✅ ChartEngine ABC (create_bar, create_line, create_scatter, etc.)
+- [x] ✅ ReportRenderer ABC (render_html, render_pdf, render_json)
 - [ ] 🟠 DI Container (agent assembly with injected dependencies)
 
 ---
