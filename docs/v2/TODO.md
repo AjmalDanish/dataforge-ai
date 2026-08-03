@@ -81,13 +81,13 @@ Sprint-based development
 - [x] 🟠 Implement checkpoint restoration
 
 ### BaseAgent v2
-- [ ] 🔴 Add required_inputs and produced_outputs declarations
-- [ ] 🔴 Add retry_policy (max_retries, backoff_strategy)
-- [ ] 🔴 Add failure_policy (HALT or SKIP)
-- [ ] 🔴 Add timeout_seconds
-- [ ] 🔴 Add can_execute(state) precondition checking
-- [ ] 🔴 Add quality_score to AgentResult
-- [ ] 🟠 Add execution_notes to AgentResult
+- [x] 🔴 Add required_inputs and produced_outputs declarations
+- [x] 🔴 Add retry_policy (max_retries, backoff_strategy)
+- [x] 🔴 Add failure_policy (HALT or SKIP)
+- [x] 🔴 Add timeout_seconds
+- [x] 🔴 Add can_execute(state) precondition checking
+- [x] 🔴 Add quality_score to AgentResult
+- [x] 🟠 Add execution_notes to AgentResult
 
 ### Core Domain Models
 - [ ] 🔴 BusinessDomain enum + DomainRegistry
