@@ -43,11 +43,15 @@ class TestGraphState:
         assert state.input_query is None
         assert state.output_dir == "./output"
         assert state.current_step == "start"
+        assert state.current_phase == 1  # DATA_INTAKE
         assert state.steps_completed == []
+        assert state.steps_skipped == []
         assert state.agent_history == []
-        assert state.validation_status == "pending"
-        assert state.retry_count == 0
-        assert state.max_retries == 3
+        assert state.agent_visit_count == {}
+        assert state.global_step_count == 0
+        assert state.max_global_steps == 35
+        assert state.quality_warnings == []
+        assert state.quality_errors == []
         assert isinstance(state.data, dict)
         assert isinstance(state.logs, list)
         assert isinstance(state.metrics, dict)
@@ -76,9 +80,9 @@ class TestGraphState:
 
         assert len(state.logs) == 0
         assert len(new_state.logs) == 1
-        assert new_state.logs[0]["level"] == "INFO"
-        assert new_state.logs[0]["agent"] == "TestAgent"
-        assert new_state.logs[0]["message"] == "Test message"
+        assert new_state.logs[0].level == "INFO"
+        assert new_state.logs[0].agent == "TestAgent"
+        assert new_state.logs[0].message == "Test message"
 
     def test_add_agent_result(self) -> None:
         """Test adding agent result."""
@@ -89,7 +93,9 @@ class TestGraphState:
         assert len(state.agent_history) == 0
         assert len(new_state.agent_history) == 1
         assert "TestAgent" in new_state.steps_completed
-        assert new_state.agent_history[0]["agent"] == "TestAgent"
+        assert new_state.agent_history[0].agent_name == "TestAgent"
+        assert new_state.global_step_count == 1
+        assert new_state.agent_visit_count["TestAgent"] == 1
 
     def test_update_step(self) -> None:
         """Test updating current step."""
@@ -99,13 +105,114 @@ class TestGraphState:
         assert state.current_step == "start"
         assert new_state.current_step == "new_step"
 
-    def test_increment_retry(self) -> None:
-        """Test incrementing retry count."""
+    def test_update_phase(self) -> None:
+        """Test updating execution phase."""
         state = GraphState(input_dataset_path="test.csv")
-        new_state = state.increment_retry()
+        new_state = state.update_phase(2)
 
-        assert state.retry_count == 0
-        assert new_state.retry_count == 1
+        assert state.current_phase == 1
+        assert new_state.current_phase == 2
+
+    def test_update_phase_with_enum(self) -> None:
+        """Test updating execution phase with enum."""
+        from dataforge.core.models import ExecutionPhase
+
+        state = GraphState(input_dataset_path="test.csv")
+        new_state = state.update_phase(ExecutionPhase.DATA_PREPARATION)
+
+        assert state.current_phase == 1
+        assert new_state.current_phase == 2
+
+    def test_add_quality_warning(self) -> None:
+        """Test adding quality warning."""
+        state = GraphState(input_dataset_path="test.csv")
+        new_state = state.add_quality_warning("Test warning")
+
+        assert state.quality_warnings == []
+        assert new_state.quality_warnings == ["Test warning"]
+
+    def test_add_quality_error(self) -> None:
+        """Test adding quality error."""
+        state = GraphState(input_dataset_path="test.csv")
+        new_state = state.add_quality_error("Test error")
+
+        assert state.quality_errors == []
+        assert new_state.quality_errors == ["Test error"]
+
+    def test_should_continue(self) -> None:
+        """Test should_continue method."""
+        state = GraphState(input_dataset_path="test.csv")
+
+        assert state.should_continue() is True
+
+        # Simulate reaching max steps
+        state = state.model_copy(update={"global_step_count": 35})
+        assert state.should_continue() is False
+
+    def test_get_agent_visit_count(self) -> None:
+        """Test getting agent visit count."""
+        state = GraphState(input_dataset_path="test.csv")
+
+        assert state.get_agent_visit_count("TestAgent") == 0
+
+        state = state.add_agent_result("TestAgent", {})
+        assert state.get_agent_visit_count("TestAgent") == 1
+
+    def test_has_exceeded_max_retries(self) -> None:
+        """Test checking if agent exceeded max retries."""
+        state = GraphState(input_dataset_path="test.csv")
+
+        # Agent not visited yet
+        assert state.has_exceeded_max_retries("TestAgent", 3) is False
+
+        # Agent visited 3 times (at limit)
+        for _ in range(3):
+            state = state.add_agent_result("TestAgent", {})
+
+        assert state.has_exceeded_max_retries("TestAgent", 3) is False
+
+        # Agent visited 4 times (exceeded)
+        state = state.add_agent_result("TestAgent", {})
+        assert state.has_exceeded_max_retries("TestAgent", 3) is True
+
+    def test_typed_accessors(self) -> None:
+        """Test typed accessors for well-known state keys."""
+        state = GraphState(input_dataset_path="test.csv")
+
+        # Initially all accessors return None
+        assert state.raw_data is None
+        assert state.file_metadata is None
+        assert state.cleaned_data is None
+        assert state.cleaning_report is None
+        assert state.business_domain is None
+        assert state.schema_info is None
+        assert state.profile is None
+        assert state.discovered_kpis is None
+        assert state.statistics is None
+        assert state.business_insights is None
+        assert state.visualizations is None
+        assert state.dashboard is None
+        assert state.report_html is None
+        assert state.report_pdf is None
+        assert state.report_json is None
+        assert state.execution_trace is None
+
+        # Set some data and verify accessors
+        state = state.set("raw_data", "test_data")
+        assert state.raw_data == "test_data"
+
+        state = state.set("business_domain", "retail")
+        assert state.business_domain == "retail"
+
+    def test_add_skip(self) -> None:
+        """Test recording agent skip."""
+        state = GraphState(input_dataset_path="test.csv")
+        new_state = state.add_skip("TestAgent", "Test reason")
+
+        assert state.steps_skipped == []
+        assert new_state.steps_skipped == ["TestAgent"]
+        assert len(new_state.logs) == 1
+        assert "Skipped TestAgent" in new_state.logs[0].message
 
     def test_add_metric(self) -> None:
         """Test adding metrics."""
