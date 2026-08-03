@@ -90,14 +90,14 @@ Sprint-based development
 - [x] 🟠 Add execution_notes to AgentResult
 
 ### Core Domain Models
-- [ ] 🔴 BusinessDomain enum + DomainRegistry
-- [ ] 🔴 KPI model (name, formula, value, trend, benchmark)
-- [ ] 🔴 BusinessInsight model (category, title, summary, action, confidence)
-- [ ] 🔴 CleaningRule and CleaningDecision models
-- [ ] 🔴 SchemaInfo model (semantic types, keys, relationships)
-- [ ] 🟠 FileMetadata model
-- [ ] 🟠 ValidationReport model
-- [ ] 🟠 ExecutionPhase IntEnum
+- [x] ✅ BusinessDomain enum + DomainRegistry
+- [x] ✅ KPI model (name, formula, value, trend, benchmark)
+- [x] ✅ BusinessInsight model (category, title, summary, action, confidence)
+- [x] ✅ CleaningRule and CleaningDecision models
+- [x] ✅ SchemaInfo model (semantic types, keys, relationships)
+- [x] ✅ FileMetadata model
+- [x] ✅ ValidationReport model
+- [x] ✅ ExecutionPhase IntEnum
 
 ### Infrastructure Interfaces
 - [ ] 🟠 FileReader ABC (read, validate_format)
