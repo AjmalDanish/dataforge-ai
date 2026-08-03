@@ -1,13 +1,19 @@
 """Core domain models and state management."""
 
+import json
+from pathlib import Path
 from typing import Any
 
+import pandas as pd
 from pydantic import BaseModel, Field
 
 from dataforge.core.models import AgentHistoryEntry, ExecutionPhase, LogEntry
+from dataforge.shared.errors import DataForgeError
 from dataforge.shared.utils import generate_execution_id, get_timestamp
 
 __all__ = ["GraphState"]
+
+CHECKPOINT_VERSION = "2.0.0"
 
 
 class GraphState(BaseModel):
@@ -470,3 +476,162 @@ class GraphState(BaseModel):
             True if agent has exceeded max retries.
         """
         return self.get_agent_visit_count(agent_name) > max_retries
+
+    # ════════════════════════════════════════════════════════════
+    # CHECKPOINT SERIALIZATION
+    # ════════════════════════════════════════════════════════════
+
+    def save_checkpoint(self, checkpoint_dir: str | Path | None = None) -> Path:
+        """Save checkpoint to disk.
+
+        Creates a checkpoint directory with:
+        - checkpoint.json: Metadata and state (excluding DataFrames)
+        - data_{key}.parquet: DataFrame data serialized to Parquet
+
+        Args:
+            checkpoint_dir: Optional custom checkpoint directory.
+                If None, uses {output_dir}/checkpoints/{execution_id}/
+
+        Returns:
+            Path to checkpoint directory.
+
+        Raises:
+            DataForgeError: If checkpoint cannot be saved.
+        """
+        try:
+            if checkpoint_dir is None:
+                checkpoint_dir = Path(self.output_dir) / "checkpoints" / self.execution_id
+            else:
+                checkpoint_dir = Path(checkpoint_dir)
+
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+            # Prepare metadata for JSON serialization
+            metadata = {
+                "checkpoint_version": CHECKPOINT_VERSION,
+                "timestamp": get_timestamp(),
+                "execution_id": self.execution_id,
+                "input_dataset_path": self.input_dataset_path,
+                "input_query": self.input_query,
+                "output_dir": self.output_dir,
+                "start_time": self.start_time,
+                "end_time": self.end_time,
+                "current_phase": self.current_phase,
+                "current_step": self.current_step,
+                "steps_completed": self.steps_completed,
+                "steps_skipped": self.steps_skipped,
+                "agent_visit_count": self.agent_visit_count,
+                "global_step_count": self.global_step_count,
+                "max_global_steps": self.max_global_steps,
+                "quality_warnings": self.quality_warnings,
+                "quality_errors": self.quality_errors,
+                "logs": [log.model_dump() for log in self.logs],
+                "metrics": self.metrics,
+                "agent_history": [entry.model_dump() for entry in self.agent_history],
+                "data_keys": list(self.data.keys()),
+            }
+
+            # Save metadata to JSON
+            metadata_path = checkpoint_dir / "checkpoint.json"
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+
+            # Serialize DataFrames to Parquet
+            for key, value in self.data.items():
+                if isinstance(value, pd.DataFrame):
+                    parquet_path = checkpoint_dir / f"data_{key}.parquet"
+                    value.to_parquet(parquet_path, index=False)
+
+            return checkpoint_dir
+
+        except (OSError, json.JSONDecodeError, Exception) as e:
+            raise DataForgeError(f"Failed to save checkpoint: {e}") from e
+
+    @classmethod
+    def load_checkpoint(
+        cls, checkpoint_dir: str | Path, validate_version: bool = True
+    ) -> "GraphState":
+        """Load checkpoint from disk.
+
+        Args:
+            checkpoint_dir: Path to checkpoint directory.
+            validate_version: If True, validates checkpoint version compatibility.
+
+        Returns:
+            Restored GraphState instance.
+
+        Raises:
+            DataForgeError: If checkpoint cannot be loaded or version is incompatible.
+        """
+        try:
+            checkpoint_dir = Path(checkpoint_dir)
+            metadata_path = checkpoint_dir / "checkpoint.json"
+
+            if not metadata_path.exists():
+                raise DataForgeError(f"Checkpoint metadata not found: {metadata_path}")
+
+            # Load metadata from JSON
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+
+            # Validate checkpoint version
+            if validate_version:
+                checkpoint_version = metadata.get("checkpoint_version")
+                if checkpoint_version != CHECKPOINT_VERSION:
+                    raise DataForgeError(
+                        f"Checkpoint version mismatch: expected {CHECKPOINT_VERSION}, "
+                        f"got {checkpoint_version}"
+                    )
+
+            # Reconstruct data dict
+            data: dict[str, Any] = {}
+            for key in metadata.get("data_keys", []):
+                parquet_path = checkpoint_dir / f"data_{key}.parquet"
+                if parquet_path.exists():
+                    try:
+                        data[key] = pd.read_parquet(parquet_path)
+                    except Exception as e:
+                        raise DataForgeError(
+                            f"Failed to load DataFrame for key '{key}': {e}"
+                        ) from e
+                else:
+                    # Non-DataFrame data was lost - this is expected for simple types
+                    # that weren't serialized separately
+                    pass
+
+            # Reconstruct logs
+            logs = [LogEntry(**log_data) for log_data in metadata.get("logs", [])]
+
+            # Reconstruct agent history
+            agent_history = [
+                AgentHistoryEntry(**entry_data)
+                for entry_data in metadata.get("agent_history", [])
+            ]
+
+            # Create GraphState instance
+            state = cls(
+                input_dataset_path=metadata["input_dataset_path"],
+                input_query=metadata.get("input_query"),
+                output_dir=metadata["output_dir"],
+                execution_id=metadata["execution_id"],
+                start_time=metadata["start_time"],
+                end_time=metadata.get("end_time"),
+                current_phase=metadata["current_phase"],
+                current_step=metadata["current_step"],
+                steps_completed=metadata["steps_completed"],
+                steps_skipped=metadata["steps_skipped"],
+                agent_visit_count=metadata["agent_visit_count"],
+                global_step_count=metadata["global_step_count"],
+                max_global_steps=metadata["max_global_steps"],
+                quality_warnings=metadata["quality_warnings"],
+                quality_errors=metadata["quality_errors"],
+                logs=logs,
+                metrics=metadata["metrics"],
+                agent_history=agent_history,
+                data=data,
+            )
+
+            return state
+
+        except (OSError, json.JSONDecodeError, KeyError) as e:
+            raise DataForgeError(f"Failed to load checkpoint: {e}") from e

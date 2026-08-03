@@ -2,6 +2,7 @@
 
 import pytest
 
+from dataforge.core.models import ExecutionPhase
 from dataforge.core.state import GraphState
 
 # Import infrastructure first to register providers
@@ -229,6 +230,136 @@ class TestGraphState:
 
         assert state.end_time is None
         assert new_state.end_time is not None
+
+    def test_save_checkpoint_basic(self, tmp_path) -> None:
+        """Test basic checkpoint save."""
+        state = GraphState(input_dataset_path="test.csv", output_dir=str(tmp_path))
+        checkpoint_dir = state.save_checkpoint()
+
+        assert checkpoint_dir.exists()
+        assert (checkpoint_dir / "checkpoint.json").exists()
+
+    def test_save_checkpoint_with_dataframe(self, tmp_path) -> None:
+        """Test checkpoint save with DataFrame data."""
+        import pandas as pd
+
+        try:
+            df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
+            state = GraphState(input_dataset_path="test.csv", output_dir=str(tmp_path))
+            state = state.set("raw_data", df)
+
+            checkpoint_dir = state.save_checkpoint()
+
+            assert checkpoint_dir.exists()
+            assert (checkpoint_dir / "checkpoint.json").exists()
+            assert (checkpoint_dir / "data_raw_data.parquet").exists()
+        except Exception as e:
+            if "pyarrow" in str(e).lower() or "fastparquet" in str(e).lower():
+                pytest.skip("PyArrow not available for Parquet serialization")
+            raise
+
+    def test_load_checkpoint_basic(self, tmp_path) -> None:
+        """Test basic checkpoint load."""
+        state = GraphState(
+            input_dataset_path="test.csv",
+            output_dir=str(tmp_path),
+            input_query="test query",
+        )
+        checkpoint_dir = state.save_checkpoint()
+
+        loaded_state = GraphState.load_checkpoint(checkpoint_dir)
+
+        assert loaded_state.input_dataset_path == state.input_dataset_path
+        assert loaded_state.input_query == state.input_query
+        assert loaded_state.execution_id == state.execution_id
+        assert loaded_state.current_phase == state.current_phase
+
+    def test_load_checkpoint_with_dataframe(self, tmp_path) -> None:
+        """Test checkpoint load with DataFrame data."""
+        import pandas as pd
+
+        try:
+            df = pd.DataFrame({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
+            state = GraphState(input_dataset_path="test.csv", output_dir=str(tmp_path))
+            state = state.set("raw_data", df)
+            checkpoint_dir = state.save_checkpoint()
+
+            loaded_state = GraphState.load_checkpoint(checkpoint_dir)
+
+            assert loaded_state.raw_data is not None
+            assert loaded_state.raw_data.equals(df)
+        except Exception as e:
+            if "pyarrow" in str(e).lower() or "fastparquet" in str(e).lower():
+                pytest.skip("PyArrow not available for Parquet serialization")
+            raise
+
+    def test_checkpoint_preserves_execution_state(self, tmp_path) -> None:
+        """Test that checkpoint preserves execution state."""
+        state = GraphState(input_dataset_path="test.csv", output_dir=str(tmp_path))
+        state = state.update_phase(ExecutionPhase.DATA_PREPARATION)
+        state = state.update_step("TestAgent")
+        state = state.add_agent_result("TestAgent", {"message": "test"})
+        state = state.add_quality_warning("test warning")
+        state = state.add_quality_error("test error")
+
+        checkpoint_dir = state.save_checkpoint()
+        loaded_state = GraphState.load_checkpoint(checkpoint_dir)
+
+        assert loaded_state.current_phase == ExecutionPhase.DATA_PREPARATION
+        assert loaded_state.current_step == "TestAgent"
+        assert len(loaded_state.agent_history) == 1
+        assert loaded_state.quality_warnings == ["test warning"]
+        assert loaded_state.quality_errors == ["test error"]
+
+    def test_checkpoint_version_validation(self, tmp_path) -> None:
+        """Test checkpoint version validation."""
+        import json
+
+        state = GraphState(input_dataset_path="test.csv", output_dir=str(tmp_path))
+        checkpoint_dir = state.save_checkpoint()
+
+        # Modify checkpoint version to be incompatible
+        metadata_path = checkpoint_dir / "checkpoint.json"
+        with open(metadata_path, "r") as f:
+            metadata = json.load(f)
+        metadata["checkpoint_version"] = "1.0.0"
+        with open(metadata_path, "w") as f:
+            json.dump(metadata, f)
+
+        # Loading should fail with version validation enabled
+        try:
+            GraphState.load_checkpoint(checkpoint_dir, validate_version=True)
+            assert False, "Should have raised DataForgeError"
+        except Exception as e:
+            assert "version mismatch" in str(e).lower()
+
+        # Loading should succeed with version validation disabled
+        loaded_state = GraphState.load_checkpoint(checkpoint_dir, validate_version=False)
+        assert loaded_state.input_dataset_path == "test.csv"
+
+    def test_checkpoint_missing_metadata(self, tmp_path) -> None:
+        """Test loading checkpoint with missing metadata."""
+        from dataforge.shared.errors import DataForgeError
+
+        checkpoint_dir = tmp_path / "checkpoints" / "test"
+        checkpoint_dir.mkdir(parents=True)
+
+        try:
+            GraphState.load_checkpoint(checkpoint_dir)
+            assert False, "Should have raised DataForgeError"
+        except DataForgeError as e:
+            assert "not found" in str(e).lower()
+
+    def test_checkpoint_custom_directory(self, tmp_path) -> None:
+        """Test saving checkpoint to custom directory."""
+        custom_dir = tmp_path / "custom_checkpoint"
+        state = GraphState(input_dataset_path="test.csv")
+
+        checkpoint_dir = state.save_checkpoint(custom_dir)
+
+        assert checkpoint_dir == custom_dir
+        assert checkpoint_dir.exists()
+        assert (checkpoint_dir / "checkpoint.json").exists()
 
 
 class TestLLMComponents:

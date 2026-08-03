@@ -4,6 +4,31 @@
 
 ---
 
+## Project Status
+
+| Field | Value |
+|-------|-------|
+| **Current Version** | v1.0.0 (Released, Frozen) |
+| **Current Branch** | v2-development |
+| **Current Sprint** | Sprint 1 - Foundation |
+| **Overall Progress** | 6/6 GraphState v2 tasks complete (67%) |
+| **Completed Sprint** | None |
+| **Next Task** | Sprint 1 Task 2: Checkpoint serialization |
+
+---
+
+## Branch Strategy
+
+```
+main (v1.0.0 - Frozen)
+    ↓
+v2-development (Active)
+    ↓
+Sprint-based development
+```
+
+---
+
 ## Legend
 
 - `[ ]` Not started
@@ -12,6 +37,13 @@
 - 🔴 Critical | 🟠 High | 🟡 Medium | 🟢 Low
 
 ---
+
+# SECTION A: DATAFORGE AI v1.x MAINTENANCE (OPTIONAL)
+
+> **IMPORTANT:** These tasks are optional improvements and are NOT blockers for DataForge AI v2 development.
+>
+> v1.0.0 has been released and frozen. Only critical bug fixes are allowed on the main branch.
+> Minor improvements listed below may be addressed opportunistically but do not block v2 progress.
 
 ## Phase 0: v1.1 Stabilization
 
@@ -26,7 +58,17 @@
 
 ---
 
-## Phase 1: Core Foundation
+# SECTION B: DATAFORGE AI v2 DEVELOPMENT
+
+> All v2 development happens on the `v2-development` branch.
+> Sprint-based execution with clear deliverables and exit criteria.
+
+## Sprint 1: Foundation (Week 1-2)
+
+**Goal:** Build the v2 core — no agents yet, just the skeleton.
+
+**Entry Criteria:** v2-development branch initialized
+**Exit Criteria:** GraphState v2 passes all tests. BaseAgent v2 contract finalized. All core domain models defined. DI Container wires agents with dependencies.
 
 ### GraphState v2
 - [x] 🔴 Add typed accessors for well-known state keys (raw_data, cleaned_data, profile, etc.)
@@ -35,8 +77,8 @@
 - [x] 🔴 Add global_step_count with max_global_steps limit
 - [x] 🔴 Add steps_skipped list
 - [x] 🔴 Add quality_warnings and quality_errors lists
-- [ ] 🟠 Implement checkpoint serialization (JSON + Parquet)
-- [ ] 🟠 Implement checkpoint restoration
+- [x] 🟠 Implement checkpoint serialization (JSON + Parquet)
+- [x] 🟠 Implement checkpoint restoration
 
 ### BaseAgent v2
 - [ ] 🔴 Add required_inputs and produced_outputs declarations
@@ -65,7 +107,12 @@
 
 ---
 
-## Phase 2: Data Agents
+## Sprint 2: Data Agents (Week 3-4)
+
+**Goal:** Build the first 3 processing agents (validation, cleaning, schema).
+
+**Entry Criteria:** Sprint 1 complete
+**Exit Criteria:** Upload a CSV → get validated, cleaned, schema-detected data. Cleaning report generated.
 
 ### DataValidationAgent
 - [ ] 🔴 File existence, readability, extension validation
@@ -103,7 +150,12 @@
 
 ---
 
-## Phase 3: Business Intelligence Agents
+## Sprint 3: Business Intelligence Agents (Week 5-6)
+
+**Goal:** The differentiators — domain detection, objective detection, KPI discovery.
+
+**Entry Criteria:** Sprint 2 complete
+**Exit Criteria:** Domain detected. Business objectives identified. KPIs computed with trends.
 
 ### BusinessDomainDetectionAgent
 - [ ] 🔴 Column name keyword matching against domain dictionaries
@@ -144,7 +196,12 @@
 
 ---
 
-## Phase 4: Output Quality
+## Sprint 4: Insights + Visualization (Week 7-8)
+
+**Goal:** Generate actionable insights and executive-quality visualizations.
+
+**Entry Criteria:** Sprint 3 complete
+**Exit Criteria:** Insights generated. Visualizations created. Report template ready.
 
 ### InsightGenerationAgent
 - [ ] 🔴 Insight category detection (top/bottom performers, trends, anomalies, risks, opportunities)
@@ -171,7 +228,12 @@
 
 ---
 
-## Phase 5: Web Interface
+## Sprint 5: Web Interface (Week 9-10)
+
+**Goal:** Build FastAPI backend and web UI for interactive analysis.
+
+**Entry Criteria:** Sprint 4 complete
+**Exit Criteria:** Upload via web → real-time progress → download results.
 
 ### FastAPI Backend
 - [ ] 🔴 POST /api/analyze (file upload)
@@ -190,7 +252,12 @@
 
 ---
 
-## Phase 6: Polish & Release
+## Sprint 6: Polish & Release (Week 11-12)
+
+**Goal:** Testing, documentation, performance, and release.
+
+**Entry Criteria:** Sprint 5 complete
+**Exit Criteria:** v2.0.0 released with 85% coverage and complete documentation.
 
 ### Testing
 - [ ] 🔴 Reach 85% test coverage
