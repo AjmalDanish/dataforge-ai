@@ -1,5 +1,6 @@
 """Infrastructure components."""
 
+from dataforge.infrastructure.chart_engines import PlotlyChartEngine
 from dataforge.infrastructure.interfaces import (
     CacheProvider,
     ChartEngine,
@@ -11,6 +12,7 @@ from dataforge.infrastructure.interfaces import (
     StorageProvider,
 )
 from dataforge.infrastructure.llm_providers import AnthropicProvider, OpenAIProvider
+from dataforge.infrastructure.report_renderers import Jinja2HTMLRenderer
 
 __all__ = [
     "OpenAIProvider",
@@ -19,7 +21,9 @@ __all__ = [
     "DataCleaner",
     "SchemaDetector",
     "ChartEngine",
+    "PlotlyChartEngine",
     "ReportRenderer",
+    "Jinja2HTMLRenderer",
     "StorageProvider",
     "CacheProvider",
     "EventPublisher",

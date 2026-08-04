@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="section">
+    <h2>📋 Dataset Summary</h2>
+
+    {% if profile %}
+    <div class="grid">
+        <div class="card">
+            <h3>Basic Information</h3>
+            <div class="metric">
+                <span class="metric-label">Rows:</span>
+                <span class="metric-value">{{ profile.row_count | number_format }}</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Columns:</span>
+                <span class="metric-value">{{ profile.column_count }}</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Memory Usage:</span>
+                <span class="metric-value">{{ profile.memory_usage_mb | round(2) }} MB</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Quality Score:</span>
+                <span class="metric-value">{{ profile.quality_score | round(2) }}</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h3>Data Quality</h3>
+            <div class="metric">
+                <span class="metric-label">Duplicate Rows:</span>
+                <span class="metric-value">{{ profile.duplicate_rows }} ({{ profile.duplicate_percentage | round(2)
+                    }}%)</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Missing Values:</span>
+                <span class="metric-value">{{ profile.missing_values_total }} ({{ profile.missing_percentage | round(2)
+                    }}%)</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Numeric Columns:</span>
+                <span class="metric-value">{{ profile.numeric_columns | length }}</span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Categorical Columns:</span>
+                <span class="metric-value">{{ profile.categorical_columns | length }}</span>
+            </div>
+        </div>
+    </div>
+
+    <h3>Column Types</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Count</th>
+                <th>Columns</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Numeric</td>
+                <td>{{ profile.numeric_columns | length }}</td>
+                <td>{{ profile.numeric_columns | join(', ') }}</td>
+            </tr>
+            <tr>
+                <td>Categorical</td>
+                <td>{{ profile.categorical_columns | length }}</td>
+                <td>{{ profile.categorical_columns | join(', ') }}</td>
+            </tr>
+            <tr>
+                <td>Temporal</td>
+                <td>{{ profile.temporal_columns | length }}</td>
+                <td>{{ profile.temporal_columns | join(', ') }}</td>
+            </tr>
+            <tr>
+                <td>Text</td>
+                <td>{{ profile.text_columns | length }}</td>
+                <td>{{ profile.text_columns | join(', ') }}</td>
+            </tr>
+            <tr>
+                <td>Boolean</td>
+                <td>{{ profile.boolean_columns | length }}</td>
+                <td>{{ profile.boolean_columns | join(', ') }}</td>
+            </tr>
+        </tbody>
+    </table>
+    {% else %}
+    <p>No profile information available.</p>
+    {% endif %}
+</section>
+{% endblock %}

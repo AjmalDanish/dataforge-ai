@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="section">
+    <h2>🎯 Recommendations</h2>
+
+    {% if recommendations %}
+    {% for recommendation in recommendations %}
+    <div class="card {{ recommendation.priority }}">
+        <h3>{{ recommendation.title }}</h3>
+        <p><strong>Category:</strong> {{ recommendation.category | capitalize }}</p>
+        <p><strong>Description:</strong> {{ recommendation.description }}</p>
+        <p><strong>Priority:</strong>
+            <span class="badge {{ recommendation.priority }}">{{ recommendation.priority | capitalize }}</span>
+        </p>
+        <p><strong>Impact:</strong> {{ recommendation.impact | capitalize }}</p>
+        <p><strong>Effort Required:</strong> {{ recommendation.effort | capitalize }}</p>
+        {% if recommendation.related_insights %}
+        <p><strong>Related Insights:</strong> {{ recommendation.related_insights | length }}</p>
+        {% endif %}
+        {% if recommendation.data_columns %}
+        <p><strong>Affected Columns:</strong> {{ recommendation.data_columns | join(', ') }}</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <p>No recommendations available.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="section">
+    <h2>📈 Key Performance Indicators</h2>
+
+    {% if kpis %}
+    <div class="grid">
+        {% for kpi in kpis %}
+        <div class="card">
+            <h3>{{ kpi.name }}</h3>
+            <p>{{ kpi.description }}</p>
+            <div class="metric">
+                <span class="metric-label">Value:</span>
+                <span class="metric-value">
+                    {% if kpi.value is not none %}
+                    {{ kpi.value }} {{ kpi.unit if kpi.unit else '' }}
+                    {% else %}
+                    N/A
+                    {% endif %}
+                </span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Trend:</span>
+                <span class="metric-value">
+                    {% if kpi.trend == 'increasing' %}↗️{% elif kpi.trend == 'decreasing' %}↘️{% else %}➡️{% endif %}
+                    {{ kpi.trend | capitalize }}
+                </span>
+            </div>
+            {% if kpi.benchmark is not none %}
+            <div class="metric">
+                <span class="metric-label">Benchmark:</span>
+                <span class="metric-value">{{ kpi.benchmark }}</span>
+            </div>
+            {% endif %}
+            {% if kpi.is_on_track is not none %}
+            <div class="metric">
+                <span class="metric-label">Status:</span>
+                <span class="metric-value">
+                    {% if kpi.is_on_track %}
+                    <span class="badge success">On Track</span>
+                    {% else %}
+                    <span class="badge warning">Off Track</span>
+                    {% endif %}
+                </span>
+            </div>
+            {% endif %}
+            <div class="metric">
+                <span class="metric-label">Formula:</span>
+                <span class="metric-value"><code>{{ kpi.formula }}</code></span>
+            </div>
+            {% if kpi.domain %}
+            <div class="metric">
+                <span class="metric-label">Domain:</span>
+                <span class="metric-value">{{ kpi.domain.get_display_name() }}</span>
+            </div>
+            {% endif %}
+            <div class="metric">
+                <span class="metric-label">Confidence:</span>
+                <span class="metric-value">{{ (kpi.confidence * 100) | round(1) }}%</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p>No KPIs available.</p>
+    {% endif %}
+</section>
+{% endblock %}

@@ -103,6 +103,8 @@ Sprint-based development
 - [x] ✅ FileReader ABC (read, validate_format)
 - [x] ✅ ChartEngine ABC (create_bar, create_line, create_scatter, etc.)
 - [x] ✅ ReportRenderer ABC (render_html, render_pdf, render_json)
+- [x] ✅ PlotlyChartEngine implementation (bar, line, scatter, histogram, box plot, heatmap)
+- [x] ✅ Jinja2HTMLRenderer implementation (HTML + JSON reports, templates)
 - [ ] 🟠 DI Container (agent assembly with injected dependencies)
 
 ---
