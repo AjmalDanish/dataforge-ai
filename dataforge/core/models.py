@@ -382,6 +382,12 @@ class FileMetadata(BaseModel):
     encoding: str = Field(default="utf-8", description="Detected file encoding")
     row_count: int | None = Field(None, ge=0, description="Number of rows")
     column_count: int | None = Field(None, ge=0, description="Number of columns")
+    column_names: list[str] = Field(
+        default_factory=list, description="List of column names"
+    )
+    sheet_names: list[str] = Field(
+        default_factory=list, description="List of sheet names (Excel only)"
+    )
     created_at: str = Field(
         default_factory=lambda: datetime.now().isoformat(),
         description="When metadata was created",

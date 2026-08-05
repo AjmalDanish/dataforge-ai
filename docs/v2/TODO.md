@@ -145,10 +145,18 @@ Sprint-based development
 - [ ] 🟡 Hierarchical relationship detection
 
 ### File Readers
-- [ ] 🔴 CSVReader implementation
-- [ ] 🔴 ExcelReader implementation (openpyxl)
-- [ ] 🟠 ParquetReader implementation
-- [ ] 🟠 JSONReader implementation (records + lines format)
+- [x] 🔴 CSVReader implementation
+- [x] 🔴 ExcelReader implementation (openpyxl)
+- [x] 🟠 ParquetReader implementation
+- [x] 🟠 JSONReader implementation (records + lines format)
+- [x] ✅ FileReader interface extension (peek_metadata method)
+- [x] ✅ FileMetadata model update (column_names, sheet_names)
+- [x] ✅ Error handling decorator (@handle_file_errors)
+- [x] ✅ Encoding detection utilities
+- [x] ✅ JSON format detection utilities
+- [x] ✅ DI Container registration (readers_container.py)
+- [x] ✅ Unit tests (test_readers.py)
+- [x] ✅ Documentation (docs/agents/FileReaders.md)
 
 ---
 

@@ -87,6 +87,27 @@ class FileReader(ABC):
         """
         ...
 
+    @abstractmethod
+    async def peek_metadata(self, file_path: str | Path) -> FileMetadata:
+        """Extract metadata without loading full data.
+
+        This method should use sampling for large files to provide
+        quick metadata extraction without loading the entire dataset.
+
+        Args:
+            file_path: Path to the file to inspect.
+
+        Returns:
+            FileMetadata containing: rows, columns, column_names, file_size,
+            encoding, sheet_names (Excel only), format.
+
+        Raises:
+            FileNotFoundError: If the file does not exist.
+            ValueError: If the file format is invalid.
+            IOError: If the file cannot be read.
+        """
+        ...
+
 
 # ============================================================================
 # DATA CLEANING INTERFACES
