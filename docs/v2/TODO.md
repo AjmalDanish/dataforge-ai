@@ -173,11 +173,21 @@ Sprint-based development
 - [x] ✅ ADR 009 created
 
 ### SchemaDetectionAgent
-- [ ] 🔴 Semantic type detection (email, phone, URL, currency, ID, name, etc.)
-- [ ] 🟠 Primary key candidate detection
-- [ ] 🟠 Temporal column detection with granularity
-- [ ] 🟡 Foreign key candidate detection
-- [ ] 🟡 Hierarchical relationship detection
+- [x] ✅ Semantic type detection (email, phone, URL, currency, ID, name, etc.)
+- [x] ✅ Primary key candidate detection
+- [x] ✅ Temporal column detection with granularity
+- [x] ✅ Foreign key candidate detection
+- [x] ✅ Hierarchical relationship detection
+- [x] ✅ Column type categorization (numeric, categorical, boolean, text, datetime)
+- [x] ✅ Cardinality detection (low, medium, high)
+- [x] ✅ Measure and dimension column detection
+- [x] ✅ Identifier column detection
+- [x] ✅ Nullable, constant, JSON, array column detection
+- [x] ✅ SchemaInfo and column profiles generation
+- [x] ✅ Confidence scoring
+- [x] ✅ 53 unit tests (93% coverage)
+- [x] ✅ Documentation created
+- [x] ✅ ADR 010 created
 
 ### File Readers
 - [x] 🔴 CSVReader implementation
