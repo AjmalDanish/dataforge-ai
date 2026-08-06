@@ -1,6 +1,7 @@
 """Agent implementations."""
 
 from dataforge.agents.base import Agent, AgentDecision, AgentResult
+from dataforge.agents.cleaning import DataCleaningAgent
 from dataforge.agents.evaluator import EvaluatorAgent
 from dataforge.agents.ingestion import DataIngestionAgent
 from dataforge.agents.planner import PlannerAgent
@@ -18,6 +19,7 @@ __all__ = [
     "EvaluatorAgent",
     "DataIngestionAgent",
     "DataValidationAgent",
+    "DataCleaningAgent",
     "DataProfilingAgent",
     "StatisticalAnalysisAgent",
     "VisualizationAgent",
