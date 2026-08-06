@@ -7,6 +7,7 @@ from dataforge.agents.planner import PlannerAgent
 from dataforge.agents.profiling import DataProfilingAgent
 from dataforge.agents.reporting import ReportingAgent
 from dataforge.agents.statistics import StatisticalAnalysisAgent
+from dataforge.agents.validation import DataValidationAgent
 from dataforge.agents.visualization import VisualizationAgent
 
 __all__ = [
@@ -16,6 +17,7 @@ __all__ = [
     "PlannerAgent",
     "EvaluatorAgent",
     "DataIngestionAgent",
+    "DataValidationAgent",
     "DataProfilingAgent",
     "StatisticalAnalysisAgent",
     "VisualizationAgent",

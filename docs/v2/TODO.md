@@ -117,12 +117,19 @@ Sprint-based development
 **Exit Criteria:** Upload a CSV → get validated, cleaned, schema-detected data. Cleaning report generated.
 
 ### DataValidationAgent
-- [ ] 🔴 File existence, readability, extension validation
-- [ ] 🔴 Format detection (CSV, Excel, Parquet, JSON)
-- [ ] 🔴 Encoding detection and fallback (UTF-8 → Latin-1 → CP1252)
-- [ ] 🔴 Size and row count enforcement
-- [ ] 🔴 Structure validation (non-empty, has columns)
-- [ ] 🟠 FileMetadata generation
+- [x] 🔴 File existence, readability, extension validation
+- [x] 🔴 Format detection (CSV, Excel, Parquet, JSON)
+- [x] 🔴 Encoding detection and fallback (UTF-8 → Latin-1 → CP1252)
+- [x] 🔴 Size and row count enforcement
+- [x] 🔴 Structure validation (non-empty, has columns)
+- [x] 🟠 FileMetadata generation
+- [x] ✅ Data quality validation (missing values, duplicates, mixed types, etc.)
+- [x] ✅ ValidationReport generation
+- [x] ✅ Validation scoring (0.0-1.0)
+- [x] ✅ Recommendations generation
+- [x] ✅ Unit tests
+- [x] ✅ Documentation (docs/agents/DataValidationAgent.md)
+- [x] ✅ ADR (docs/adr/008-data-validation-agent.md)
 
 ### DataCleaningAgent
 - [ ] 🔴 Missing value detection and handling (drop column >70%, impute, flag)
