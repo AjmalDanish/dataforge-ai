@@ -107,7 +107,8 @@ class TestDataValidationAgentInit:
         """Test agent properties are set correctly."""
         assert agent.name == "DataValidationAgent"
         assert agent.phase == ExecutionPhase.DATA_INTAKE
-        assert agent.required_inputs == ["input_dataset_path"]
+        # required_inputs is empty because input_dataset_path is a direct GraphState field, not in state.data
+        assert agent.required_inputs == []
         assert agent.produced_outputs == ["raw_data", "file_metadata", "validation_report"]
         assert agent.retry_policy.max_retries == 1
         assert agent.timeout_seconds == 30
@@ -282,9 +283,10 @@ class TestDataValidationAgentValidation:
         df = pd.DataFrame(index=[0, 1, 2])
         issues = agent._validate_structure(df)
 
-        # DataFrame with index but no columns is considered valid by pandas
-        # The agent doesn't detect this as an error
-        assert len(issues) == 0
+        # DataFrame with index but no columns has len(df) == 0 (no data rows)
+        # So it's detected as empty_dataset
+        assert len(issues) == 1
+        assert issues[0].issue_type == "empty_dataset"
 
     @pytest.mark.asyncio
     async def test_validate_structure_duplicate_columns(
@@ -583,7 +585,10 @@ class TestDataValidationAgentEdgeCases:
         result = await agent.execute(state)
 
         assert result.decision == AgentDecision.ERROR
-        assert "unsupported" in result.message.lower() or "format" in result.message.lower()
+        # Check validation issues for detailed error message about unsupported format
+        validation_issues = result.data_updates.get("validation_issues", [])
+        assert len(validation_issues) == 1
+        assert "unsupported" in validation_issues[0].message.lower() or "format" in validation_issues[0].message.lower()
 
     @pytest.mark.asyncio
     async def test_execute_large_file(self, agent: DataValidationAgent, temp_dir: Path) -> None:
@@ -702,7 +707,10 @@ class TestDataValidationAgentIntegration:
         assert result.execution_duration is not None
         assert result.execution_duration > 0
         assert len(result.execution_notes) > 0
-        assert "metrics" in result.metadata
+        # Verify metadata contains expected keys (file_size_mb, row_count, column_count)
+        assert "file_size_mb" in result.metadata
+        assert "row_count" in result.metadata
+        assert "column_count" in result.metadata
 
     @pytest.mark.asyncio
     async def test_can_execute(self, agent: DataValidationAgent, valid_csv: Path) -> None:

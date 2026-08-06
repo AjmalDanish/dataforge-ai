@@ -45,7 +45,7 @@ class DataValidationAgent(Agent):
 
     # Agent properties
     phase: ExecutionPhase = ExecutionPhase.DATA_INTAKE
-    required_inputs: list[str] = ["input_dataset_path"]
+    required_inputs: list[str] = []  # input_dataset_path is a direct GraphState field, not in state.data
     produced_outputs: list[str] = ["raw_data", "file_metadata", "validation_report"]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=1)
     failure_policy: FailurePolicy = FailurePolicy.HALT
@@ -80,6 +80,32 @@ class DataValidationAgent(Agent):
         """
         super().__init__(llm_provider, logger, retry_policy, failure_policy, timeout_seconds)
         self.container = container or DIContainer()
+
+    def can_execute(self, state: GraphState) -> bool:
+        """Check if this agent can execute on the current state.
+
+        Overrides base can_execute to check for input_dataset_path presence.
+
+        Args:
+            state: Current graph state.
+
+        Returns:
+            True if agent can execute.
+        """
+        # Check phase compatibility
+        if state.current_phase != self.phase:
+            return False
+
+        # Check that input_dataset_path is provided and not empty
+        if not state.input_dataset_path or not state.input_dataset_path.strip():
+            return False
+
+        # Check retry limit
+        visit_count = state.get_agent_visit_count(self.name)
+        if visit_count > self.retry_policy.max_retries:
+            return False
+
+        return True
 
     async def execute(self, state: GraphState) -> AgentResult:
         """Execute validation logic.

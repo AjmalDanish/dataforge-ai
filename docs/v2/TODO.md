@@ -140,6 +140,16 @@ Sprint-based development
 - [x] ✅ Review execute() for code quality issues
 - [x] ✅ Update docs/v2/TODO.md with Task 2A Engineering Stabilization Complete
 
+### Task 2B: DataValidationAgent Final Stabilization
+- [x] ✅ Fix test_validate_structure_no_columns (updated expectation for empty_dataset)
+- [x] ✅ Fix test_execute_unsupported_format (check validation_issues instead of result.message)
+- [x] ✅ Fix test_full_validation_workflow (check actual metadata keys)
+- [x] ✅ Fix test_can_execute (removed input_dataset_path from required_inputs, added custom can_execute)
+- [x] ✅ Fix test_agent_properties (updated for empty required_inputs)
+- [x] ✅ Fix test_cannot_execute_missing_input (custom can_execute checks input_dataset_path)
+- [x] ✅ Run pytest (40 passed, 0 failed, 0 errors)
+- [x] ✅ Verify coverage (89% achieved)
+
 ### DataCleaningAgent
 - [ ] 🔴 Missing value detection and handling (drop column >70%, impute, flag)
 - [ ] 🔴 Duplicate row detection and removal
