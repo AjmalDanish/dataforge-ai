@@ -214,7 +214,18 @@ Sprint-based development
 **Exit Criteria:** Domain detected. Business objectives identified. KPIs computed with trends.
 
 ### BusinessDomainDetectionAgent
-- [ ] 🔴 Column name keyword matching against domain dictionaries
+- [x] ✅ Column name keyword matching against domain dictionaries
+- [x] ✅ Semantic type analysis for domain patterns
+- [x] ✅ Value pattern analysis for domain characteristics
+- [x] ✅ Identifier analysis for domain hints
+- [x] ✅ Measure analysis for domain hints
+- [x] ✅ Confidence scoring with weighted calculation
+- [x] ✅ Evidence generation and reasoning
+- [x] ✅ Domain summary generation
+- [x] ✅ Error handling with GENERAL domain fallback
+- [x] ✅ Comprehensive unit tests (99% coverage)
+- [x] ✅ Documentation (docs/agents/BusinessDomainDetectionAgent.md)
+- [x] ✅ ADR (docs/adr/011-business-domain-detection-agent.md)
 - [ ] 🔴 LLM-based domain classification
 - [ ] 🔴 Rule-based fallback (no LLM)
 - [ ] 🔴 Confidence scoring
