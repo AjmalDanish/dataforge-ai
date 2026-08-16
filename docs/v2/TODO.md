@@ -232,8 +232,13 @@ Sprint-based development
 - [ ] 🟠 Support 10 domains (retail, finance, HR, healthcare, marketing, SaaS, real estate, education, logistics, general)
 
 ### BusinessObjectiveDetectionAgent
-- [ ] 🔴 LLM-powered business question generation
-- [ ] 🟠 Domain-aware question templates as fallback
+- [x] ✅ LLM-powered business question generation
+- [x] ✅ Domain-aware question templates as fallback
+- [x] ✅ Deterministic template fallback (all 10 domains, column-aware keyword filtering)
+- [x] ✅ Structured JSON parsing with validation and sanitization
+- [x] ✅ Unit tests (65 tests, 100% statement coverage)
+- [x] ✅ Documentation (docs/agents/BusinessObjectiveDetectionAgent.md)
+- [x] ✅ ADR (docs/adr/012-business-objective-detection-agent.md)
 
 ### KPIDiscoveryAgent
 - [ ] 🔴 Domain-specific KPI templates

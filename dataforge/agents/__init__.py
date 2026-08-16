@@ -5,6 +5,7 @@ from dataforge.agents.cleaning import DataCleaningAgent
 from dataforge.agents.domain import BusinessDomainDetectionAgent
 from dataforge.agents.evaluator import EvaluatorAgent
 from dataforge.agents.ingestion import DataIngestionAgent
+from dataforge.agents.objective import BusinessObjectiveDetectionAgent
 from dataforge.agents.planner import PlannerAgent
 from dataforge.agents.profiling import DataProfilingAgent
 from dataforge.agents.reporting import ReportingAgent
@@ -24,6 +25,7 @@ __all__ = [
     "DataCleaningAgent",
     "SchemaDetectionAgent",
     "BusinessDomainDetectionAgent",
+    "BusinessObjectiveDetectionAgent",
     "DataProfilingAgent",
     "StatisticalAnalysisAgent",
     "VisualizationAgent",
