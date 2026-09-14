@@ -105,11 +105,22 @@ def _load_run_from_disk(run_id: str) -> dict[str, Any] | None:
                     steps = [
                         "PlannerAgent","DataValidationAgent","PlannerAgent","DataCleaningAgent","PlannerAgent","SchemaDetectionAgent","PlannerAgent","BusinessDomainDetectionAgent","PlannerAgent","BusinessObjectiveDetectionAgent","PlannerAgent","DataProfilingAgent","PlannerAgent","FeatureEngineeringAgent","PlannerAgent","KPIDiscoveryAgent","PlannerAgent","StatisticalAnalysisAgent","PlannerAgent","InsightGenerationAgent","PlannerAgent","VisualizationAgent","PlannerAgent","ReportingAgent",
                     ]
+            _bd = snap.get("business_domain") or "hr"
+            # normalize old "BusinessDomain.HR" strings and enum values
+            if hasattr(_bd, "value"):
+                try:
+                    _bd = str(_bd.value).lower()
+                except Exception:
+                    _bd = str(_bd).lower()
+            else:
+                _bd = str(_bd).lower()
+                if _bd.startswith("businessdomain."):
+                    _bd = _bd.split(".", 1)[1]
             rec = _new_run_record(run_id, snap.get("filename") or "unknown", snap.get("format") or "csv", snap.get("size_bytes") or 0)
             rec.update(
                 {
                     "status": "done",
-                    "business_domain": snap.get("business_domain") or "hr",
+                    "business_domain": _bd,
                     "steps_completed": steps,
                     "current_phase": 7,
                     "finished_at": snap.get("finished_at"),
