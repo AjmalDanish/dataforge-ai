@@ -71,7 +71,8 @@ class InsightGenerationAgent(Agent):
                 execution_notes=["missing cleaned_data"],
             )
 
-        domain = (state.get("business_domain") or "general").lower()
+        _bd = state.get("business_domain") or "general"
+        domain = (_bd.value if hasattr(_bd, "value") else str(_bd)).lower()
         statistics = state.get("statistics") or {}
         profile = state.get("profile") or {}
         kpis = state.get("discovered_kpis") or []

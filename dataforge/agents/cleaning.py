@@ -675,6 +675,8 @@ class DataCleaningAgent(Agent):
         df_clean = df.copy()
 
         for col in df_clean.columns:
+            if pd.api.types.is_bool_dtype(df_clean[col]):
+                continue
             if pd.api.types.is_numeric_dtype(df_clean[col]):
                 # Calculate IQR
                 Q1 = df_clean[col].quantile(0.25)

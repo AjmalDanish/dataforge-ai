@@ -115,6 +115,10 @@ class VisualizationAgent(Agent):
                 execution_notes=["empty dataset"],
             )
 
+        # Use per-run output dir when available (backend sets state.output_dir per run)
+        if getattr(state, "output_dir", None):
+            self.output_dir = Path(state.output_dir) / "visualizations"
+            self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(
             "Starting visualization generation",
             agent=self.name,

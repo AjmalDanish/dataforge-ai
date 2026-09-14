@@ -179,7 +179,8 @@ class KPIDiscoveryAgent(Agent):
                 execution_notes=["missing cleaned_data"],
             )
 
-        domain = (state.get("business_domain") or "general").lower()
+        _bd = state.get("business_domain") or "general"
+        domain = (_bd.value if hasattr(_bd, "value") else str(_bd)).lower()
         templates = self.DOMAIN_TEMPLATES.get(domain, self.DOMAIN_TEMPLATES["general"])
         # Always include the generic row-count KPI for comparability.
         if domain != "general":

@@ -82,6 +82,9 @@ class ReportingAgent(Agent):
         Returns:
             AgentResult with report information.
         """
+        if getattr(state, "output_dir", None):
+            self.output_dir = Path(state.output_dir)
+            self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(
             "Starting report generation",
             agent=self.name,
@@ -99,8 +102,10 @@ class ReportingAgent(Agent):
             insights = list(state.get("insights", []))
             logs = state.get("logs", [])
 
-            # v2 extras
-            business_domain = state.get("business_domain") or "general"
+            # v2 extras — normalize BusinessDomain enum to string
+            _bd_raw = state.get("business_domain") or "general"
+            business_domain = (_bd_raw.value if hasattr(_bd_raw, "value") else str(_bd_raw))
+            business_domain = business_domain.lower()
             business_insights = state.get("business_insights", []) or []
             discovered_kpis = state.get("discovered_kpis", []) or []
             dashboard = state.get("dashboard", {}) or {}
