@@ -6,6 +6,7 @@ from dataforge.agents.domain import BusinessDomainDetectionAgent
 from dataforge.agents.evaluator import EvaluatorAgent
 from dataforge.agents.features import FeatureEngineeringAgent
 from dataforge.agents.ingestion import DataIngestionAgent
+from dataforge.agents.insights import InsightGenerationAgent
 from dataforge.agents.kpi import KPIDiscoveryAgent
 from dataforge.agents.objective import BusinessObjectiveDetectionAgent
 from dataforge.agents.planner import PlannerAgent
@@ -30,6 +31,7 @@ __all__ = [
     "BusinessObjectiveDetectionAgent",
     "DataProfilingAgent",
     "FeatureEngineeringAgent",
+    "InsightGenerationAgent",
     "KPIDiscoveryAgent",
     "StatisticalAnalysisAgent",
     "VisualizationAgent",

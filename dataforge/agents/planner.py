@@ -58,6 +58,7 @@ class PlannerAgent(Agent):
         ("FeatureEngineeringAgent", ["cleaned_data"]),
         ("KPIDiscoveryAgent", ["cleaned_data"]),
         ("StatisticalAnalysisAgent", ["profile"]),
+        ("InsightGenerationAgent", ["cleaned_data"]),
         ("VisualizationAgent", ["cleaned_data"]),
         ("ReportingAgent", ["cleaned_data"]),
     ]

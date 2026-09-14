@@ -12,6 +12,7 @@ from dataforge.agents import (
     DataValidationAgent,
     EvaluatorAgent,
     FeatureEngineeringAgent,
+    InsightGenerationAgent,
     KPIDiscoveryAgent,
     PlannerAgent,
     ReportingAgent,
@@ -46,6 +47,7 @@ def route_from_planner(state: GraphState) -> str:
         "ProfilingAgent": "profiling",
         "FeatureEngineeringAgent": "features",
         "KPIDiscoveryAgent": "kpi",
+        "InsightGenerationAgent": "insights",
         "StatisticalAnalysisAgent": "statistics",
         "VisualizationAgent": "visualization",
         "EvaluatorAgent": "evaluator",
@@ -95,6 +97,7 @@ def create_graph() -> CompiledStateGraph:
     profiling = DataProfilingAgent(logger=logger)
     features = FeatureEngineeringAgent(logger=logger)
     kpi = KPIDiscoveryAgent(logger=logger)
+    insights = InsightGenerationAgent(logger=logger)
     statistics = StatisticalAnalysisAgent(logger=logger)
     visualization = VisualizationAgent(logger=logger)
     reporting = ReportingAgent(logger=logger)
@@ -150,6 +153,11 @@ def create_graph() -> CompiledStateGraph:
         result, new_state = await kpi.execute_with_logging(state)
         return new_state
 
+    async def insights_node(state: GraphState) -> GraphState:
+        """Insight generation node."""
+        result, new_state = await insights.execute_with_logging(state)
+        return new_state
+
     async def profiling_node(state: GraphState) -> GraphState:
         """Profiling node."""
         result, new_state = await profiling.execute_with_logging(state)
@@ -181,6 +189,7 @@ def create_graph() -> CompiledStateGraph:
     workflow.add_node("profiling", profiling_node)
     workflow.add_node("features", features_node)
     workflow.add_node("kpi", kpi_node)
+    workflow.add_node("insights", insights_node)
     workflow.add_node("statistics", statistics_node)
     workflow.add_node("visualization", visualization_node)
     workflow.add_node("evaluator", evaluator_node)
@@ -203,6 +212,7 @@ def create_graph() -> CompiledStateGraph:
             "profiling": "profiling",
             "features": "features",
             "kpi": "kpi",
+            "insights": "insights",
             "statistics": "statistics",
             "visualization": "visualization",
             "evaluator": "evaluator",
@@ -221,6 +231,7 @@ def create_graph() -> CompiledStateGraph:
     workflow.add_edge("profiling", "planner")
     workflow.add_edge("features", "planner")
     workflow.add_edge("kpi", "planner")
+    workflow.add_edge("insights", "planner")
     workflow.add_edge("statistics", "planner")
     workflow.add_edge("visualization", "planner")
     workflow.add_edge("evaluator", "planner")
