@@ -1,14 +1,12 @@
-# Netlify — serves frontend/ (Next.js static export). API lives on HuggingFace Spaces.
+# Netlify — Next.js on Netlify (SSR). API lives on HuggingFace Spaces.
 [build]
   base = "frontend/"
   command = "npm run build"
-  publish = "out/"
+  publish = "frontend/.next"
 
 [build.environment]
   NEXT_TELEMETRY_DISABLED = "true"
+  NODE_VERSION = "20"
 
-# Cache Next.js static assets
-[[headers]]
-  for = "/_next/static/*"
-  [headers.values]
-    Cache-Control = "public, max-age=31536000, immutable"
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
