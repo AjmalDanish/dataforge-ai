@@ -35,7 +35,7 @@ ALLOWED_ORIGINS = [
     o.strip()
     for o in os.getenv(
         "FRONTEND_URL",
-        "http://localhost:3000,http://localhost:3001,https://dataforge-ai.netlify.app",
+        "http://localhost:3000,http://localhost:3001,https://dataforge-ai.netlify.app,https://frontend-eight-pi-72.vercel.app,https://frontend-7hpg0n00d-azylas.vercel.app,https://frontend-3dmsqk6ev-azylas.vercel.app",
     ).split(",")
     if o.strip()
 ]
@@ -57,9 +57,9 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS != ["*"] else ["*"],
+    allow_origins=["*"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
     max_age=600,
 )
