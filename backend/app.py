@@ -64,9 +64,76 @@ app.add_middleware(
     max_age=600,
 )
 
+
+@app.on_event("startup")
+async def _load_existing_runs() -> None:
+    """Rehydrate runs that already have output on disk (survives restarts)."""
+    try:
+        for p in OUTPUT_ROOT.iterdir():
+            if p.is_dir() and (p / "results.json").exists() and p.name not in RUNS:
+                try:
+                    rec = _load_run_from_disk(p.name)
+                    if rec:
+                        RUNS[p.name] = rec
+                except Exception:
+                    continue
+    except Exception:
+        pass
+
 RUNS: dict[str, dict[str, Any]] = {}
 WS_CONNECTIONS: dict[str, list[WebSocket]] = {}
 RUNS_LOCK = asyncio.Lock()
+
+
+def _load_run_from_disk(run_id: str) -> dict[str, Any] | None:
+    """Rehydrate a run that exists on disk but not in memory (after restart)."""
+    out = OUTPUT_ROOT / run_id
+    if not out.exists():
+        return None
+    # if results.json exists -> done, else try to infer from files
+    results_path = out / "results.json"
+    if results_path.exists():
+        try:
+            snap = json.loads(results_path.read_text(encoding="utf-8"))
+            # snap was written with business_domain, kpis, etc., but may not have steps_completed
+            # Try to recover steps_completed from results.json or from report existence
+            steps = snap.get("steps_completed") or []
+            # Fallback: if snapshot has no steps, infer from known pipeline (done = 24 steps)
+            if not steps:
+                # Check if report exists -> assume full pipeline completed
+                if (out / "report.html").exists():
+                    steps = [
+                        "PlannerAgent","DataValidationAgent","PlannerAgent","DataCleaningAgent","PlannerAgent","SchemaDetectionAgent","PlannerAgent","BusinessDomainDetectionAgent","PlannerAgent","BusinessObjectiveDetectionAgent","PlannerAgent","DataProfilingAgent","PlannerAgent","FeatureEngineeringAgent","PlannerAgent","KPIDiscoveryAgent","PlannerAgent","StatisticalAnalysisAgent","PlannerAgent","InsightGenerationAgent","PlannerAgent","VisualizationAgent","PlannerAgent","ReportingAgent",
+                    ]
+            rec = _new_run_record(run_id, snap.get("filename") or "unknown", snap.get("format") or "csv", snap.get("size_bytes") or 0)
+            rec.update(
+                {
+                    "status": "done",
+                    "business_domain": snap.get("business_domain") or "hr",
+                    "steps_completed": steps,
+                    "current_phase": 7,
+                    "finished_at": snap.get("finished_at"),
+                    "duration_s": snap.get("duration_s"),
+                    "output_dir": str(out),
+                }
+            )
+            # try to find original upload filename from upload dir
+            up_dir = UPLOAD_ROOT / run_id
+            if up_dir.exists():
+                for f in up_dir.iterdir():
+                    if f.is_file():
+                        rec["filename"] = f.name
+                        rec["upload_path"] = str(f)
+                        break
+            return rec
+        except Exception:
+            pass
+    # No results.json but output dir exists -> treat as done if report exists, else failed
+    if (out / "report.html").exists():
+        rec = _new_run_record(run_id, "unknown", "csv", 0)
+        rec.update({"status": "done", "current_phase": 7, "steps_completed": [], "output_dir": str(out)})
+        return rec
+    return None
 
 
 def _now_iso() -> str:
@@ -218,10 +285,12 @@ async def _run_analysis(run_id: str, upload_path: Path, output_dir: Path) -> Non
             "finished_at": datetime.now(timezone.utc).isoformat(),
             "duration_s": (datetime.now(timezone.utc) - started).total_seconds(),
             "business_domain": _bd_snap,
+            "steps_completed": steps_completed,
+            "steps_skipped": [],
+            "current_phase": current_phase_final,
         }
-        # pull v2 outputs
+        # pull v2 outputs (keep normalized business_domain)
         for key in (
-            "business_domain",
             "business_insights",
             "discovered_kpis",
             "visualizations",
@@ -232,6 +301,8 @@ async def _run_analysis(run_id: str, upload_path: Path, output_dir: Path) -> Non
             "statistics",
         ):
             snapshot[key] = data_dict.get(key)
+        # ensure business_domain stays normalized
+        snapshot["business_domain"] = _bd_snap
 
         try:
             with open(output_dir / "results.json", "w", encoding="utf-8") as f:
@@ -332,7 +403,12 @@ async def get_status(run_id: str) -> dict[str, Any]:
     async with RUNS_LOCK:
         rec = RUNS.get(run_id)
         if rec is None:
-            raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
+            # Try to rehydrate from disk (survives restarts)
+            rec = _load_run_from_disk(run_id)
+            if rec is not None:
+                RUNS[run_id] = rec
+            else:
+                raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
         return {
             "run_id": run_id,
             "status": rec["status"],
@@ -356,7 +432,11 @@ async def get_results(run_id: str) -> dict[str, Any]:
     async with RUNS_LOCK:
         rec = RUNS.get(run_id)
         if rec is None:
-            raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
+            rec = _load_run_from_disk(run_id)
+            if rec is not None:
+                RUNS[run_id] = rec
+            else:
+                raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
         if rec["status"] not in ("done", "failed"):
             return {"run_id": run_id, "status": rec["status"], "message": "Results not ready — poll /api/status until status=done"}
         if rec["status"] == "failed":
