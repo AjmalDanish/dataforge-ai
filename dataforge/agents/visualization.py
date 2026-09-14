@@ -1,17 +1,34 @@
-"""Visualization Agent - Creates data visualizations."""
+"""Visualization Agent - Creates data visualizations and dashboards."""
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from dataforge.agents.base import Agent, AgentDecision, AgentResult
 from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
+from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
 
 
+def _is_temporal(series) -> bool:
+    """Check whether a pandas Series holds temporal data."""
+    import pandas as pd
+
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return True
+    if series.dtype == object:
+        try:
+            converted = pd.to_datetime(series.dropna().head(20), errors="coerce")
+            return bool(converted.notna().all()) and len(converted) > 0
+        except Exception:
+            return False
+    return False
+
+
 class VisualizationAgent(Agent):
-    """Creates visualizations for data exploration and insights.
+    """Creates visualizations for data exploration and executive dashboards.
 
     Generates various types of visualizations:
     - Histograms for distributions
@@ -20,15 +37,35 @@ class VisualizationAgent(Agent):
     - Bar charts for categorical data
     - Heatmaps for correlation matrices
     - Line plots for temporal data
+    - KPI cards for headline metrics (v2)
+    - Trend chart for temporal analysis (v2)
 
-    Saves visualizations as HTML files and generates visualization insights.
+    Saves visualizations as HTML files, generates visualization insights,
+    and assembles a ``dashboard`` dict (KPI row + trend + layout) for the
+    executive report.
+
+    v2 contract: phase OUTPUT, inputs ``cleaned_data`` (falls back to
+    ``raw_data`` for v1 compatibility), outputs ``visualizations`` and
+    ``dashboard``.
     """
+
+    phase: ExecutionPhase = ExecutionPhase.OUTPUT
+    required_inputs: list[str] = ["cleaned_data"]
+    produced_outputs: list[str] = ["visualizations", "dashboard"]
+    retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
+    failure_policy: FailurePolicy = FailurePolicy.SKIP
+    timeout_seconds: int = 90
+
+    MAX_KPI_CARDS: int = 4
 
     def __init__(
         self,
         llm_provider: LLMProvider | None = None,
         logger: StructuredLogger | None = None,
         output_dir: str = "output/visualizations",
+        retry_policy: RetryPolicy | None = None,
+        failure_policy: FailurePolicy | None = None,
+        timeout_seconds: int | None = None,
     ):
         """Initialize the Visualization Agent.
 
@@ -36,8 +73,11 @@ class VisualizationAgent(Agent):
             llm_provider: LLM provider instance.
             logger: Structured logger instance.
             output_dir: Directory to save visualization files.
+            retry_policy: Retry policy override (optional).
+            failure_policy: Failure policy override (optional).
+            timeout_seconds: Timeout override in seconds (optional).
         """
-        super().__init__(llm_provider, logger)
+        super().__init__(llm_provider, logger, retry_policy, failure_policy, timeout_seconds)
         self.name = "VisualizationAgent"
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -53,17 +93,26 @@ class VisualizationAgent(Agent):
         """
         import pandas as pd
 
-        df = state.get("raw_data")
+        # v2 prefers cleaned_data; v1 pipelines only set raw_data.
+        df = state.get("cleaned_data")
+        if df is None:
+            df = state.get("raw_data")
         if df is None:
             return AgentResult(
-                decision=AgentDecision.ERROR,
+                decision=AgentDecision.SKIP,
                 message="No data available for visualization",
+                data_updates={"visualizations": [], "dashboard": {}},
+                quality_score=0.0,
+                execution_notes=["missing cleaned_data and raw_data"],
             )
 
         if len(df) == 0:
             return AgentResult(
-                decision=AgentDecision.ERROR,
+                decision=AgentDecision.SKIP,
                 message="Empty dataset provided for visualization",
+                data_updates={"visualizations": [], "dashboard": {}},
+                quality_score=0.0,
+                execution_notes=["empty dataset"],
             )
 
         self.logger.info(
@@ -135,11 +184,20 @@ class VisualizationAgent(Agent):
                 df, visualizations, profile, statistics
             )
 
+            # v2: KPI cards + trend chart + dashboard assembly
+            kpi_cards = self._create_kpi_cards(state.get("discovered_kpis", []))
+            visualizations.extend(kpi_cards)
+            trend_chart = self._create_trend_chart(df)
+            if trend_chart:
+                visualizations.append(trend_chart)
+            dashboard = self._assemble_dashboard(kpi_cards, trend_chart, visualizations)
+
             self.logger.info(
                 "Visualization generation complete",
                 agent=self.name,
                 visualizations_created=len(visualizations),
                 insights_generated=len(insights),
+                dashboard_sections=len(dashboard.get("layout", [])),
             )
 
             return AgentResult(
@@ -147,16 +205,22 @@ class VisualizationAgent(Agent):
                 message=f"Created {len(visualizations)} visualizations: "
                 f"{sum(1 for v in visualizations if v['type'] == 'distribution')} distributions, "
                 f"{sum(1 for v in visualizations if v['type'] == 'boxplot')} box plots, "
-                f"{sum(1 for v in visualizations if v['type'] == 'correlation')} correlations",
+                f"{sum(1 for v in visualizations if v['type'] == 'correlation')} correlations, "
+                f"{len(kpi_cards)} KPI cards",
                 data_updates={
                     "visualizations": visualizations,
+                    "dashboard": dashboard,
                     "insights": state.get("insights", []) + insights,
                 },
                 metadata={
                     "visualization_count": len(visualizations),
                     "output_dir": str(self.output_dir),
                     "insights_generated": len(insights),
+                    "kpi_cards": len(kpi_cards),
+                    "has_trend_chart": trend_chart is not None,
                 },
+                quality_score=round(min(len(visualizations) / 6, 1.0), 3),
+                execution_notes=[v.get("title", v.get("type", "?")) for v in visualizations],
             )
 
         except Exception as e:
@@ -538,6 +602,148 @@ class VisualizationAgent(Agent):
                 )
 
         return visualizations
+
+    def _create_kpi_cards(
+        self, kpis: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Create KPI card visuals (Plotly indicators saved as HTML).
+
+        Args:
+            kpis: Discovered KPI dictionaries.
+
+        Returns:
+            List of KPI card visualization dictionaries (max MAX_KPI_CARDS).
+        """
+        import plotly.graph_objects as go
+
+        cards = []
+        for kpi in (kpis or [])[: self.MAX_KPI_CARDS]:
+            value = kpi.get("value")
+            name = kpi.get("name", "KPI")
+            if value is None or not isinstance(value, (int, float)):
+                continue
+            try:
+                fig = go.Figure(
+                    go.Indicator(
+                        mode="number",
+                        value=float(value),
+                        title={"text": name},
+                    )
+                )
+                fig.update_layout(margin={"l": 20, "r": 20, "t": 40, "b": 20}, height=220)
+
+                safe = "".join(c if c.isalnum() else "_" for c in name)[:40]
+                filename = f"kpi_{safe}.html"
+                filepath = self.output_dir / filename
+                fig.write_html(str(filepath))
+
+                cards.append(
+                    {
+                        "type": "kpi_card",
+                        "kpi": name,
+                        "title": name,
+                        "value": float(value),
+                        "trend": kpi.get("trend", "stable"),
+                        "file_path": str(filepath),
+                        "file_name": filename,
+                        "format": "html",
+                    }
+                )
+            except Exception as e:
+                self.logger.warning(
+                    "Failed to create KPI card",
+                    agent=self.name,
+                    kpi=name,
+                    error=str(e),
+                )
+        return cards
+
+    def _create_trend_chart(self, df) -> dict[str, Any] | None:
+        """Create a temporal trend line chart for the first datetime + numeric pair.
+
+        Args:
+            df: Pandas DataFrame.
+
+        Returns:
+            Visualization dictionary or None when no temporal data exists.
+        """
+        import plotly.express as px
+
+        temporal = [c for c in df.columns if _is_temporal(df[c])]
+        numeric = df.select_dtypes(include="number").columns.tolist()
+        if not temporal or not numeric:
+            return None
+
+        tcol, ncol = temporal[0], numeric[0]
+        try:
+            ordered = df.sort_values(tcol)
+            fig = px.line(
+                ordered,
+                x=tcol,
+                y=ncol,
+                title=f"{ncol} over time",
+            )
+            fig.update_layout(xaxis_title=tcol, yaxis_title=ncol)
+
+            filename = f"trend_{ncol}_over_time.html"
+            filepath = self.output_dir / filename
+            fig.write_html(str(filepath))
+
+            return {
+                "type": "trend",
+                "columns": [tcol, ncol],
+                "title": f"{ncol} over time",
+                "file_path": str(filepath),
+                "file_name": filename,
+                "format": "html",
+            }
+        except Exception as e:
+            self.logger.warning(
+                "Failed to create trend chart",
+                agent=self.name,
+                error=str(e),
+            )
+            return None
+
+    def _assemble_dashboard(
+        self,
+        kpi_cards: list[dict[str, Any]],
+        trend_chart: dict[str, Any] | None,
+        visualizations: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Assemble the executive dashboard layout from generated visuals.
+
+        Layout order: KPI row → trend chart → distributions → correlations →
+        everything else.
+
+        Args:
+            kpi_cards: KPI card visualizations.
+            trend_chart: Trend chart visualization or None.
+            visualizations: All visualization dictionaries.
+
+        Returns:
+            Dashboard dictionary with sections and ordered layout.
+        """
+        others = [
+            v
+            for v in visualizations
+            if v.get("type") not in ("kpi_card", "trend")
+        ]
+        priority = {"distribution": 0, "correlation": 1, "scatter": 2, "bar": 3}
+        others.sort(key=lambda v: priority.get(v.get("type", ""), 9))
+
+        layout = (
+            [c["file_name"] for c in kpi_cards]
+            + ([trend_chart["file_name"]] if trend_chart else [])
+            + [v["file_name"] for v in others if v.get("file_name")]
+        )
+        return {
+            "kpi_cards": [c["file_name"] for c in kpi_cards],
+            "trend_chart": trend_chart["file_name"] if trend_chart else None,
+            "sections": ["kpis", "trend", "distributions", "correlations", "breakdowns"],
+            "layout": layout,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     async def _generate_visualization_insights(
         self,

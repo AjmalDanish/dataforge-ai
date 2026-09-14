@@ -1,4 +1,4 @@
-"""Reporting Agent - Generates comprehensive analysis report."""
+"""Reporting Agent - Generates comprehensive executive analysis reports."""
 
 import json
 from datetime import datetime
@@ -8,27 +8,55 @@ from typing import Any
 from dataforge.agents.base import Agent, AgentDecision, AgentResult
 from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
+from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
+
+# Legacy insight severities mapped onto the report CSS classes.
+_SEVERITY_CLASS = {
+    "critical": "error",
+    "high": "warning",
+    "medium": "info",
+    "low": "info",
+    "info": "info",
+    "warning": "warning",
+    "error": "error",
+}
 
 
 class ReportingAgent(Agent):
-    """Generates a comprehensive analysis report.
+    """Generates a comprehensive executive analysis report.
 
     Creates a detailed report summarizing:
+    - Executive summary (domain, headline KPIs, top findings)
     - Data profile and characteristics
     - Statistical analysis results
-    - Key insights and findings
-    - Visualizations generated
+    - Key insights and findings (legacy + v2 business insights)
+    - Visualizations generated (including dashboard + KPI cards)
     - Recommendations for further analysis
 
-    Saves report as both HTML and JSON formats.
+    Saves report as both HTML and JSON formats. PDF export is planned
+    (requires an HTML-to-PDF renderer) and reported as unavailable until
+    the dependency lands.
+
+    v2 contract: phase OUTPUT, no required inputs (reports on whatever
+    exists), outputs ``report``, ``report_html`` and ``report_json``.
     """
+
+    phase: ExecutionPhase = ExecutionPhase.OUTPUT
+    required_inputs: list[str] = []
+    produced_outputs: list[str] = ["report", "report_html", "report_json"]
+    retry_policy: RetryPolicy = RetryPolicy(max_retries=1)
+    failure_policy: FailurePolicy = FailurePolicy.HALT
+    timeout_seconds: int = 120
 
     def __init__(
         self,
         llm_provider: LLMProvider | None = None,
         logger: StructuredLogger | None = None,
         output_dir: str = "output",
+        retry_policy: RetryPolicy | None = None,
+        failure_policy: FailurePolicy | None = None,
+        timeout_seconds: int | None = None,
     ):
         """Initialize the Reporting Agent.
 
@@ -36,8 +64,11 @@ class ReportingAgent(Agent):
             llm_provider: LLM provider instance.
             logger: Structured logger instance.
             output_dir: Directory to save report files.
+            retry_policy: Retry policy override (optional).
+            failure_policy: Failure policy override (optional).
+            timeout_seconds: Timeout override in seconds (optional).
         """
-        super().__init__(llm_provider, logger)
+        super().__init__(llm_provider, logger, retry_policy, failure_policy, timeout_seconds)
         self.name = "ReportingAgent"
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -58,13 +89,24 @@ class ReportingAgent(Agent):
         )
 
         try:
-            # Gather all analysis results
-            raw_data = state.get("raw_data")
+            # Gather all analysis results (v1 + v2 keys)
+            raw_data = state.get("cleaned_data")
+            if raw_data is None:
+                raw_data = state.get("raw_data")
             profile = state.get("profile", {})
             statistics = state.get("statistics", {})
             visualizations = state.get("visualizations", [])
-            insights = state.get("insights", [])
+            insights = list(state.get("insights", []))
             logs = state.get("logs", [])
+
+            # v2 extras
+            business_domain = state.get("business_domain") or "general"
+            business_insights = state.get("business_insights", []) or []
+            discovered_kpis = state.get("discovered_kpis", []) or []
+            dashboard = state.get("dashboard", {}) or {}
+            insights = insights + [
+                self._normalize_business_insight(bi) for bi in business_insights
+            ]
 
             # Validate we have something to report
             if profile is None and statistics is None:
@@ -74,9 +116,13 @@ class ReportingAgent(Agent):
                 )
 
             # Generate report content
+            executive_summary = self._build_executive_summary(
+                business_domain, discovered_kpis, business_insights, raw_data
+            )
             report_metadata = {
                 "generated_at": datetime.now().isoformat(),
                 "dataset_path": state.get("input_dataset_path", "unknown"),
+                "business_domain": business_domain,
                 "total_rows": len(raw_data) if raw_data is not None else 0,
                 "total_columns": len(raw_data.columns) if raw_data is not None else 0,
                 "agents_completed": state.get("steps_completed", []),
@@ -84,12 +130,27 @@ class ReportingAgent(Agent):
 
             # Generate HTML report
             html_report = self._generate_html_report(
-                report_metadata, profile, statistics, visualizations, insights, logs
+                report_metadata,
+                profile,
+                statistics,
+                visualizations,
+                insights,
+                logs,
+                executive_summary,
+                discovered_kpis,
             )
 
             # Generate JSON report
             json_report = self._generate_json_report(
-                report_metadata, profile, statistics, visualizations, insights, logs
+                report_metadata,
+                profile,
+                statistics,
+                visualizations,
+                insights,
+                logs,
+                executive_summary,
+                discovered_kpis,
+                business_insights,
             )
 
             # Save reports
@@ -106,27 +167,44 @@ class ReportingAgent(Agent):
                 json_path=str(json_path),
                 insights_count=len(insights),
                 visualizations_count=len(visualizations),
+                kpi_count=len(discovered_kpis),
             )
 
             return AgentResult(
                 decision=AgentDecision.CONTINUE,
-                message=f"Generated comprehensive report: {len(insights)} insights, "
-                f"{len(visualizations)} visualizations documented",
+                message=f"Generated executive report: {len(insights)} insights "
+                f"({len(business_insights)} business), "
+                f"{len(visualizations)} visualizations, "
+                f"{len(discovered_kpis)} KPIs documented",
                 data_updates={
                     "report": {
                         "html_path": str(html_path),
                         "json_path": str(json_path),
+                        "pdf_path": None,
+                        "pdf_available": False,
                         "insights_count": len(insights),
+                        "business_insights_count": len(business_insights),
                         "visualizations_count": len(visualizations),
+                        "kpi_count": len(discovered_kpis),
                         "generated_at": datetime.now().isoformat(),
-                    }
+                    },
+                    "report_html": str(html_path),
+                    "report_json": str(json_path),
                 },
                 metadata={
                     "html_path": str(html_path),
                     "json_path": str(json_path),
                     "insights_count": len(insights),
                     "visualizations_count": len(visualizations),
+                    "kpi_count": len(discovered_kpis),
                 },
+                quality_score=round(
+                    min((len(insights) + len(visualizations)) / 8, 1.0), 3
+                ),
+                execution_notes=[
+                    f"{len(business_insights)} business insights",
+                    f"{len(discovered_kpis)} KPIs",
+                ],
             )
 
         except Exception as e:
@@ -142,6 +220,122 @@ class ReportingAgent(Agent):
                 metadata={"error_type": type(e).__name__, "error_message": str(e)},
             )
 
+    def _normalize_business_insight(self, insight: dict[str, Any]) -> dict[str, Any]:
+        """Map a v2 business insight onto the legacy insight shape.
+
+        Args:
+            insight: v2 insight with category/title/summary/severity.
+
+        Returns:
+            Legacy-shaped dict consumable by the insights section.
+        """
+        severity = str(insight.get("severity", "info")).lower()
+        return {
+            "type": insight.get("category", "business"),
+            "message": f"{insight.get('title', '')} — {insight.get('summary', '')}".strip(" —"),
+            "severity": _SEVERITY_CLASS.get(severity, "info"),
+            "confidence": insight.get("confidence"),
+            "business_action": insight.get("business_action", ""),
+        }
+
+    def _build_executive_summary(
+        self,
+        domain: str,
+        kpis: list[dict[str, Any]],
+        business_insights: list[dict[str, Any]],
+        raw_data,
+    ) -> dict[str, Any]:
+        """Build the executive summary payload for HTML and JSON.
+
+        Args:
+            domain: Detected business domain.
+            kpis: Discovered KPIs.
+            business_insights: Ranked v2 business insights.
+            raw_data: DataFrame or None.
+
+        Returns:
+            Summary dict with headline, KPIs and top findings.
+        """
+        top_findings = [
+            {
+                "title": bi.get("title", ""),
+                "summary": bi.get("summary", ""),
+                "severity": bi.get("severity", "info"),
+                "action": bi.get("business_action", ""),
+            }
+            for bi in (business_insights or [])[:5]
+        ]
+        headline_kpis = [
+            {"name": k.get("name", ""), "value": k.get("value"), "trend": k.get("trend", "stable")}
+            for k in (kpis or [])[:4]
+        ]
+        rows = len(raw_data) if raw_data is not None else 0
+        if top_findings:
+            headline = (
+                f"{domain.title()} data ({rows:,} rows): {top_findings[0]['title']}. "
+                f"{len(business_insights)} findings, {len(kpis)} KPIs tracked."
+            )
+        elif rows:
+            headline = f"{domain.title()} data ({rows:,} rows) profiled; no standout findings."
+        else:
+            headline = "No data available for executive summary."
+        return {
+            "headline": headline,
+            "domain": domain,
+            "headline_kpis": headline_kpis,
+            "top_findings": top_findings,
+        }
+
+    def _executive_summary_html(
+        self, summary: dict[str, Any], kpis: list[dict[str, Any]]
+    ) -> list[str]:
+        """Render the executive summary HTML section.
+
+        Args:
+            summary: Executive summary payload.
+            kpis: Discovered KPIs.
+
+        Returns:
+            List of HTML lines.
+        """
+        html = [
+            "        <h2>📌 Executive Summary</h2>",
+            f"        <p><strong>{summary.get('headline', '')}</strong></p>",
+            "",
+        ]
+        if kpis:
+            html.extend(
+                [
+                    "        <h3>Headline KPIs</h3>",
+                    "        <div class='stat-grid'>",
+                ]
+            )
+            for kpi in kpis[:4]:
+                value = kpi.get("value")
+                display = f"{value:,.2f}" if isinstance(value, float) else str(value)
+                trend = kpi.get("trend", "stable")
+                html.append(
+                    f"            <div class='stat-card'><div class='stat-value'>{display}</div>"
+                    f"<div class='stat-label'>{kpi.get('name', 'KPI')} ({trend})</div></div>"
+                )
+            html.extend(["        </div>", ""])
+        top = summary.get("top_findings", [])
+        if top:
+            html.extend(["        <h3>Top Findings</h3>", "        <ol>"])
+            for finding in top:
+                html.append(
+                    f"            <li><strong>{finding.get('title', '')}</strong> — "
+                    f"{finding.get('summary', '')}"
+                    + (
+                        f" <em>Action: {finding['action']}</em>"
+                        if finding.get("action")
+                        else ""
+                    )
+                    + "</li>"
+                )
+            html.extend(["        </ol>", ""])
+        return html
+
     def _generate_html_report(
         self,
         metadata: dict[str, Any],
@@ -150,6 +344,8 @@ class ReportingAgent(Agent):
         visualizations: list[dict[str, Any]],
         insights: list[dict[str, Any]],
         logs: list[dict[str, Any]],
+        executive_summary: dict[str, Any] | None = None,
+        kpis: list[dict[str, Any]] | None = None,
     ) -> str:
         """Generate HTML report.
 
@@ -160,6 +356,8 @@ class ReportingAgent(Agent):
             visualizations: List of visualizations.
             insights: List of insights.
             logs: Execution logs.
+            executive_summary: Executive summary payload (optional).
+            kpis: Discovered KPIs (optional).
 
         Returns:
             HTML report as string.
@@ -230,6 +428,10 @@ class ReportingAgent(Agent):
                 "",
             ]
         )
+
+        # Executive Summary Section (v2)
+        if executive_summary:
+            html.extend(self._executive_summary_html(executive_summary, kpis or []))
 
         # Data Profile Section
         if profile:
@@ -478,6 +680,9 @@ class ReportingAgent(Agent):
         visualizations: list[dict[str, Any]],
         insights: list[dict[str, Any]],
         logs: list[dict[str, Any]],
+        executive_summary: dict[str, Any] | None = None,
+        kpis: list[dict[str, Any]] | None = None,
+        business_insights: list[dict[str, Any]] | None = None,
     ) -> str:
         """Generate JSON report.
 
@@ -488,12 +693,18 @@ class ReportingAgent(Agent):
             visualizations: List of visualizations.
             insights: List of insights.
             logs: Execution logs.
+            executive_summary: Executive summary payload (optional).
+            kpis: Discovered KPIs (optional).
+            business_insights: Raw v2 business insights (optional).
 
         Returns:
             JSON report as string.
         """
         report = {
             "metadata": metadata,
+            "executive_summary": executive_summary or {},
+            "kpis": kpis or [],
+            "business_insights": business_insights or [],
             "profile": profile,
             "statistics": statistics,
             "visualizations": visualizations,
@@ -501,6 +712,8 @@ class ReportingAgent(Agent):
             "execution_logs": logs[-100:],  # Limit to last 100 logs
             "summary": {
                 "total_insights": len(insights),
+                "business_insights": len(business_insights or []),
+                "total_kpis": len(kpis or []),
                 "total_visualizations": len(visualizations),
                 "numeric_columns": profile.get("numeric_column_count", 0),
                 "categorical_columns": profile.get("categorical_column_count", 0),
