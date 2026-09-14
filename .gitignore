@@ -144,11 +144,11 @@ cython_debug/
 
 # DataForge AI specific
 output/
-*.csv
 *.parquet
 *.xlsx
 *.xls
-!examples/*.csv
+!docs/examples/**/*.csv
+!datasets/*.csv
 !tests/fixtures/*.csv
 
 # Checkpoints
@@ -171,3 +171,24 @@ temp/
 # Analysis results
 results/
 analysis_reports/
+
+# Frontend (Next.js on Netlify)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/.vercel
+netlify/.cache/
+
+# Backend (FastAPI on HuggingFace Spaces)
+backend/__pycache__/
+backend/.env
+.huggingface/
+
+# Database (Postgres Neon/Supabase + Alembic)
+*.db-shm
+*.db-wal
+backend/alembic/versions/*.py
+!backend/alembic/versions/.gitkeep
+.env.local
+DATABASE_URL.local

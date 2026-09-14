@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="section">
+    <h2>💡 Business Insights</h2>
+
+    {% if insights %}
+    {% for insight in insights %}
+    <div class="card {{ insight.impact }}">
+        <h3>{{ insight.title }}</h3>
+        <p><strong>Category:</strong> {{ insight.category | capitalize }}</p>
+        <p><strong>Summary:</strong> {{ insight.summary }}</p>
+        <p><strong>Impact:</strong>
+            <span class="badge {{ insight.impact }}">{{ insight.impact | capitalize }}</span>
+        </p>
+        <p><strong>Confidence:</strong> {{ (insight.confidence * 100) | round(1) }}%</p>
+        {% if insight.action %}
+        <p><strong>Recommended Action:</strong> {{ insight.action }}</p>
+        {% endif %}
+        {% if insight.data_sources %}
+        <p><strong>Data Sources:</strong> {{ insight.data_sources | join(', ') }}</p>
+        {% endif %}
+        <p><small>Created: {{ insight.created_at }}</small></p>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p>No insights available.</p>
+    {% endif %}
+</section>
+{% endblock %}

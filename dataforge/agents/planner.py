@@ -1,8 +1,20 @@
-"""Planner Agent - Central decision maker for the analysis workflow."""
+"""Planner Agent - Central decision maker for the analysis workflow.
+
+Supports two pipelines:
+- v1 (default, ``pipeline_version`` unset): legacy chain
+  ingestion → profiling → statistics → visualization → evaluator → reporting.
+  Preserved for backward compatibility (CLI, existing tests).
+- v2 (``state.data["pipeline_version"] == "v2"``): phase-ordered chain
+  validation → cleaning → schema → domain → objective → profiling →
+  features → kpi → statistics → visualization → reporting, with per-agent
+  quality gates (retry on failure within budget, else skip) and a global
+  step-count loop guard.
+"""
 
 from dataforge.agents.base import Agent, AgentDecision, AgentResult
 from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
+from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
 
 
@@ -15,7 +27,7 @@ class PlannerAgent(Agent):
     - Decide when analysis is complete
     - Handle error recovery and re-planning
 
-    Decision Logic:
+    Decision Logic (v1):
     1. Initial state (empty steps_completed) → Start with Ingestion Agent
     2. After DataIngestionAgent → Validate, then Profiling Agent
     3. After DataProfilingAgent → Statistics (if numeric) or Visualization (if no numeric)
@@ -27,18 +39,48 @@ class PlannerAgent(Agent):
     Uses `steps_completed` list to detect current stage.
     """
 
+    # v2 contract attributes (planner spans all phases; intake is nominal)
+    phase: ExecutionPhase = ExecutionPhase.DATA_INTAKE
+    required_inputs: list[str] = []
+    produced_outputs: list[str] = []
+    retry_policy: RetryPolicy = RetryPolicy(max_retries=1)
+    failure_policy: FailurePolicy = FailurePolicy.HALT
+    timeout_seconds: int = 30
+
+    # v2 pipeline: (agent name, state keys that must be present)
+    V2_PIPELINE: list[tuple[str, list[str]]] = [
+        ("DataValidationAgent", []),
+        ("DataCleaningAgent", ["raw_data"]),
+        ("SchemaDetectionAgent", ["cleaned_data"]),
+        ("BusinessDomainDetectionAgent", ["cleaned_data"]),
+        ("BusinessObjectiveDetectionAgent", ["business_domain"]),
+        ("DataProfilingAgent", ["cleaned_data"]),
+        ("FeatureEngineeringAgent", ["cleaned_data"]),
+        ("KPIDiscoveryAgent", ["cleaned_data"]),
+        ("StatisticalAnalysisAgent", ["profile"]),
+        ("VisualizationAgent", ["cleaned_data"]),
+        ("ReportingAgent", ["cleaned_data"]),
+    ]
+    V2_MAX_AGENT_VISITS: int = 2
+
     def __init__(
         self,
         llm_provider: LLMProvider | None = None,
         logger: StructuredLogger | None = None,
+        retry_policy: RetryPolicy | None = None,
+        failure_policy: FailurePolicy | None = None,
+        timeout_seconds: int | None = None,
     ):
         """Initialize the Planner Agent.
 
         Args:
             llm_provider: LLM provider instance.
             logger: Structured logger instance.
+            retry_policy: Retry policy override (optional).
+            failure_policy: Failure policy override (optional).
+            timeout_seconds: Timeout override in seconds (optional).
         """
-        super().__init__(llm_provider, logger)
+        super().__init__(llm_provider, logger, retry_policy, failure_policy, timeout_seconds)
         self.name = "PlannerAgent"
 
     async def execute(self, state: GraphState) -> AgentResult:
@@ -50,6 +92,25 @@ class PlannerAgent(Agent):
         Returns:
             AgentResult with decision, message, and next agent suggestion.
         """
+        # Global loop guard (v2 state).
+        try:
+            if not state.should_continue():
+                return AgentResult(
+                    decision=AgentDecision.COMPLETE,
+                    message="Max global steps reached, ending analysis",
+                    metadata={"reason": "max_global_steps"},
+                )
+        except AttributeError:
+            pass
+
+        # v2 pipeline when explicitly selected.
+        try:
+            pipeline = state.get("pipeline_version")
+        except Exception:
+            pipeline = None
+        if pipeline == "v2":
+            return self._route_v2(state)
+
         # Use steps_completed to detect where we are in the workflow
         steps = state.steps_completed
 
@@ -102,6 +163,101 @@ class PlannerAgent(Agent):
             message="Proceeding with next agent (fallback)",
             metadata={"reason": "fallback"},
         )
+
+    # -- v2 routing ------------------------------------------------------
+    def _route_v2(self, state: GraphState) -> AgentResult:
+        """Phase-ordered routing with per-agent quality gates."""
+        steps = state.steps_completed
+
+        # Quality gate: retry the last agent on failure within budget.
+        last_agent, last_success = self._last_agent_status(state)
+        if last_agent is not None and not last_success:
+            visits = self._visit_count(state, last_agent)
+            if visits <= self.V2_MAX_AGENT_VISITS:
+                return AgentResult(
+                    decision=AgentDecision.RETRY,
+                    message=f"Retrying {last_agent} (attempt {visits + 1})",
+                    next_agent_suggestion=last_agent,
+                    metadata={"reason": "quality_gate_retry", "agent": last_agent},
+                )
+            return AgentResult(
+                decision=AgentDecision.CONTINUE,
+                message=f"{last_agent} failed twice, skipping",
+                next_agent_suggestion=self._next_viable(state, skip=last_agent),
+                data_updates={"steps_skipped": self._skipped_plus(state, last_agent)},
+                metadata={"reason": "quality_gate_skip", "agent": last_agent},
+            )
+
+        # Reporting done → complete.
+        if "ReportingAgent" in steps:
+            return AgentResult(
+                decision=AgentDecision.COMPLETE,
+                message="Analysis complete, report generated",
+                metadata={"reason": "report_generated", "pipeline": "v2"},
+            )
+
+        suggestion = self._next_viable(state)
+        if suggestion is None:
+            return AgentResult(
+                decision=AgentDecision.ERROR,
+                message="No viable next agent (missing preconditions)",
+                metadata={"reason": "v2_blocked", "steps": steps},
+            )
+        if not steps:
+            return AgentResult(
+                decision=AgentDecision.CONTINUE,
+                message="Starting v2 analysis with data validation",
+                next_agent_suggestion=suggestion,
+                metadata={"reason": "initial_state", "pipeline": "v2"},
+            )
+        return AgentResult(
+            decision=AgentDecision.CONTINUE,
+            message=f"Proceeding to {suggestion}",
+            next_agent_suggestion=suggestion,
+            metadata={"reason": "v2_plan", "pipeline": "v2"},
+        )
+
+    def _next_viable(self, state: GraphState, skip: str | None = None) -> str | None:
+        """First pipeline agent not completed (and not skipped) with met preconditions."""
+        steps = set(state.steps_completed)
+        skipped = set(self._skipped(state))
+        if skip is not None:
+            skipped.add(skip)
+        for agent_name, preconditions in self.V2_PIPELINE:
+            if agent_name in steps or agent_name in skipped:
+                continue
+            if all(state.get(key) is not None for key in preconditions):
+                return agent_name
+        return None
+
+    def _last_agent_status(self, state: GraphState) -> tuple[str | None, bool]:
+        """Name and success flag of the most recent non-planner agent."""
+        for entry in reversed(state.agent_history):
+            if isinstance(entry, dict):
+                agent_name = entry.get("agent")
+                result = entry.get("result", {})
+            else:
+                agent_name = entry.agent_name
+                result = (entry.metadata or {}).get("result", {})
+            if agent_name == self.name:
+                continue
+            return agent_name, bool(result.get("success", True))
+        return None, True
+
+    def _visit_count(self, state: GraphState, agent_name: str) -> int:
+        try:
+            return state.get_agent_visit_count(agent_name)
+        except AttributeError:
+            return sum(1 for s in state.steps_completed if s == agent_name)
+
+    def _skipped(self, state: GraphState) -> list[str]:
+        try:
+            return list(state.steps_skipped)
+        except AttributeError:
+            return []
+
+    def _skipped_plus(self, state: GraphState, agent_name: str) -> list[str]:
+        return self._skipped(state) + [agent_name]
 
     def _after_ingestion(self, state: GraphState) -> AgentResult:
         """Determine next action after data ingestion."""

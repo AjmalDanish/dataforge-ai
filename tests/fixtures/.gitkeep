@@ -1,0 +1,5 @@
+# Test fixtures directory
+
+This directory contains test data files for unit tests.
+
+Test files are created dynamically during test execution using pytest fixtures.

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="section">
+    <h2>📊 Visualizations</h2>
+
+    {% if visualizations %}
+    <div class="grid">
+        {% for chart_name, chart_html in visualizations.items() %}
+        <div class="chart-container">
+            <h3>{{ chart_name | replace('_', ' ') | title }}</h3>
+            {{ chart_html | safe }}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p>No visualizations available.</p>
+    {% endif %}
+</section>
+{% endblock %}
