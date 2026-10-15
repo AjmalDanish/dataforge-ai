@@ -19,6 +19,17 @@ services:
       # Comma-separated allowed CORS origins (production frontend + local dev).
       - key: FRONTEND_URL
         value: "https://dataforge-ai-two.vercel.app,http://localhost:3000"
+      # Accounts: the Clerk instance ("Frontend API URL"). Public value, not a secret.
+      - key: CLERK_ISSUER
+        value: "https://still-wombat-7537.clerk.accounts.dev"
+      # Never fall back to the single-user dev mode on a public server.
+      - key: DATAFORGE_REQUIRE_AUTH
+        value: "1"
+      # Analyses per hour: per signed-in user / per IP for anonymous sample runs.
+      - key: USER_RUNS_PER_HOUR
+        value: "10"
+      - key: ANON_RUNS_PER_HOUR
+        value: "5"
       # Optional: enables the LLM-written executive summary (Render prompts for the value).
       - key: ANTHROPIC_API_KEY
         sync: false

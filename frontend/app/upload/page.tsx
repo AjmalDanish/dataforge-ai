@@ -3,12 +3,15 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { API_URL, analyze } from "@/lib/api";
+import { SignInPrompt, useApiToken, useSignedIn } from "@/lib/auth";
 
 const ACCEPT = ".csv,.xlsx,.xls,.parquet,.pq,.json";
-const MAX_MB = 100;
+const MAX_MB = Number(process.env.NEXT_PUBLIC_MAX_UPLOAD_MB || 25);
 
 export default function UploadPage() {
   const router = useRouter();
+  const getToken = useApiToken();
+  const signedIn = useSignedIn();
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,18 +37,27 @@ export default function UploadPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await analyze(file);
-      router.push(`/runs/${res.run_id}`);
+      const res = await analyze(file, await getToken());
+      router.push(res.run_page);
     } catch (e: any) {
       setError(e?.message || String(e));
       setBusy(false);
     }
-  }, [file, router]);
+  }, [file, router, getToken]);
+
+  if (signedIn === false) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-6">
+        <h1 className="text-2xl font-bold">Upload dataset</h1>
+        <SignInPrompt message="Sign in to analyze your own files. Your runs stay private to your account. Without an account you can still try the samples on the home page." />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <h1 className="text-2xl font-bold">Upload dataset</h1>
-      <p className="text-sm text-slate-400">Backend: <span className="font-mono">{API_URL}</span> • Allow: {ACCEPT} • Max {MAX_MB} MB</p>
+      <p className="text-sm text-slate-400">Backend: <span className="font-mono">{API_URL}</span> • Allow: {ACCEPT} • Max {MAX_MB} MB • Runs are private to your account</p>
 
       <div
         onDragOver={(e) => e.preventDefault()}

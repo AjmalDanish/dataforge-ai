@@ -142,14 +142,17 @@ See [.env.example](.env.example) for every setting.
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/api/analyze` | Upload a file (multipart `file`), returns `run_id` |
+| `POST` | `/api/analyze` | Upload a file (multipart `file`) — **sign-in required** |
+| `POST` | `/api/samples/{name}` | Analyze a bundled sample (`employees.csv`, `products.csv`) — works signed out |
 | `GET` | `/api/status/{run_id}` | Status, phase, completed/skipped agents, recent events |
 | `GET` | `/api/results/{run_id}` | KPIs, insights, narrative, evaluation, chart and report URLs |
-| `GET` | `/api/download/{run_id}/{html\|json\|pdf}` | Report downloads |
-| `GET` | `/api/runs/{run_id}/files/{path}` | Report assets (the HTML report and its charts) |
-| `GET` | `/api/history` | Recent runs |
-| `DELETE` | `/api/runs/{run_id}` | Delete a run (requires `X-Admin-Token` if `DATAFORGE_ADMIN_TOKEN` is set) |
-| `WS` | `/ws/{run_id}` | Live events: one `{"type": "agent", ...}` per agent step, then `done`/`error` |
+| `GET` | `/api/download/{run_id}/{html\|json\|pdf}?t=` | Report downloads |
+| `GET` | `/api/runs/{run_id}/{t}/files/{path}` | Report assets (the HTML report and its charts) |
+| `GET` | `/api/history` | The signed-in user's runs |
+| `DELETE` | `/api/runs/{run_id}` | Delete a run (owner, or `X-Admin-Token`) |
+| `WS` | `/ws/{run_id}?t=` | Live events: one `{"type": "agent", ...}` per agent step, then `done`/`error` |
+
+**Access control.** Signed-in requests carry a Clerk session token (`Authorization: Bearer …`), verified against the Clerk instance's JWKS (issuer, expiry, authorized origin). Every run belongs to the user who started it and also has an unguessable share token: the owner or anyone with the token (`?t=`, as in "anyone with the link") can read it; anyone else gets `404`. Analyses are rate limited per user (`USER_RUNS_PER_HOUR`, default 10) and anonymous sample runs per client IP (`ANON_RUNS_PER_HOUR`, default 5); over the limit the API returns `429` with `Retry-After`. Without `CLERK_ISSUER` the API runs in single-user dev mode, which `DATAFORGE_REQUIRE_AUTH=1` forbids on public deployments.
 
 Runs execute in a worker thread so the API stays responsive during analysis; run metadata is persisted to `OUTPUT_DIR/<run_id>/run.json` and reloaded on restart. Uploads are streamed to disk with a size cap, run IDs are validated, and asset paths are confined to the run's directory.
 
@@ -193,7 +196,7 @@ docs/                PRD, TRD, architecture, ADRs, agent docs
 - Single-dataset analysis only; no database connectors or multi-file joins yet.
 - KPI templates cover retail, HR and finance in depth; other domains fall back to generic KPIs.
 - Run storage is the local filesystem (`dataforge/db` holds SQLAlchemy models for a future Postgres backend; they are not wired in).
-- The API has no user accounts: anyone who can reach it can upload and view runs. Put it behind your own auth for anything beyond a demo.
+- Rate limits are kept in memory, so they reset on restart and are per instance; use Redis before running several API instances.
 
 ## License
 

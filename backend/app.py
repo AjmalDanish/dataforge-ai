@@ -2,14 +2,19 @@
 
 Endpoints (see /docs for the OpenAPI schema):
 
-    POST   /api/analyze                 upload a dataset, start a run
-    GET    /api/status/{run_id}         progress (phase, completed agents, events)
-    GET    /api/results/{run_id}        KPIs, insights, narrative, report links
-    GET    /api/download/{run_id}/{fmt} report as html | json | pdf
-    GET    /api/runs/{run_id}/files/... report assets (charts, plotly.min.js)
-    GET    /api/history                 recent runs
-    DELETE /api/runs/{run_id}           delete a run (admin token if configured)
-    WS     /ws/{run_id}                 live per-agent events
+    POST   /api/analyze                       upload a dataset (sign-in required)
+    POST   /api/samples/{name}                analyze a bundled sample (anonymous OK)
+    GET    /api/status/{run_id}               progress (phase, completed agents, events)
+    GET    /api/results/{run_id}              KPIs, insights, narrative, report links
+    GET    /api/download/{run_id}/{fmt}?t=    report as html | json | pdf
+    GET    /api/runs/{run_id}/{t}/files/...   report assets (charts, plotly.min.js)
+    GET    /api/history                       the signed-in user's runs
+    DELETE /api/runs/{run_id}                 delete a run (owner or admin token)
+    WS     /ws/{run_id}?t=                    live per-agent events
+
+Access control (see security.py): a run is readable by its owner (Clerk
+session token) or by anyone holding its share token ``t``. Analyses are rate
+limited per user, and anonymous sample runs per client IP.
 
 Runs execute in a worker thread (the agents are CPU-bound pandas code), so the
 event loop stays free to serve polling and WebSocket traffic. Run metadata is
@@ -31,7 +36,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    Depends,
+    FastAPI,
+    File,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
@@ -45,6 +60,17 @@ from dataforge import __version__ as APP_VERSION  # noqa: E402
 from dataforge.core.state import GraphState  # noqa: E402
 from dataforge.graph.workflow import run_workflow  # noqa: E402
 from dataforge.infrastructure.llm_providers import llm_from_env  # noqa: E402
+from security import (  # noqa: E402
+    RateLimiter,
+    User,
+    auth_mode,
+    can_read,
+    client_ip,
+    limit_from_env,
+    new_share_token,
+    optional_user,
+    require_user,
+)
 
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -55,6 +81,11 @@ ADMIN_TOKEN = os.getenv("DATAFORGE_ADMIN_TOKEN", "").strip()
 
 UPLOAD_ROOT = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads"))).resolve()
 OUTPUT_ROOT = Path(os.getenv("OUTPUT_DIR", str(BASE_DIR / "outputs"))).resolve()
+SAMPLES_DIR = Path(os.getenv("SAMPLES_DIR", str(BASE_DIR.parent / "datasets"))).resolve()
+SAMPLE_FILES = ("employees.csv", "products.csv")
+USER_RUNS_PER_HOUR = limit_from_env("USER_RUNS_PER_HOUR", 10)
+ANON_RUNS_PER_HOUR = limit_from_env("ANON_RUNS_PER_HOUR", 5)
+LIMITER = RateLimiter()
 
 RUN_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 REPORT_FILES = {"html": "report.html", "json": "report.json", "pdf": "report.pdf"}
@@ -77,6 +108,8 @@ PUBLIC_FIELDS = (
     "error",
     "llm",
 )
+# Also persisted, never listed publicly: who owns the run and its share token.
+PERSISTED_FIELDS = PUBLIC_FIELDS + ("owner", "share_token")
 
 RUNS: dict[str, dict[str, Any]] = {}
 WS_CONNECTIONS: dict[str, list[WebSocket]] = {}
@@ -102,7 +135,7 @@ def _check_run_id(run_id: str) -> str:
 def _persist(rec: dict[str, Any]) -> None:
     out = OUTPUT_ROOT / rec["run_id"]
     out.mkdir(parents=True, exist_ok=True)
-    payload = {k: rec.get(k) for k in PUBLIC_FIELDS}
+    payload = {k: rec.get(k) for k in PERSISTED_FIELDS}
     (out / "run.json").write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
 
 
@@ -115,6 +148,8 @@ def _load_runs_from_disk() -> None:
             continue
         if not RUN_ID_RE.match(str(rec.get("run_id", ""))):
             continue
+        if not rec.get("share_token"):
+            continue  # pre-auth run with no access control; never expose it
         if rec.get("status") in ("queued", "running"):
             rec.update(status="failed", error="Server restarted before the run finished")
         rec["events"] = []
@@ -152,6 +187,23 @@ async def _get_run(run_id: str) -> dict[str, Any]:
     if rec is None:
         raise _error(404, "not_found", "Run not found", f"No run {run_id}")
     return rec
+
+
+async def _readable_run(run_id: str, user: User | None, token: str | None) -> dict[str, Any]:
+    """The run if the caller may read it; 404 otherwise (don't reveal it exists)."""
+    rec = await _get_run(run_id)
+    if not can_read(rec, user, token):
+        raise _error(404, "not_found", "Run not found", f"No run {run_id}")
+    return rec
+
+
+def _links(rec: dict[str, Any]) -> dict[str, str]:
+    run_id, token = rec["run_id"], rec["share_token"]
+    return {
+        "run_page": f"/runs/{run_id}?t={token}",
+        "files": f"/api/runs/{run_id}/{token}/files",
+        "ws": f"/ws/{run_id}?t={token}",
+    }
 
 
 async def _broadcast(run_id: str, payload: dict[str, Any]) -> None:
@@ -254,7 +306,13 @@ async def _run_analysis(run_id: str, upload_path: Path, output_dir: Path) -> Non
 
 @app.get("/healthz")
 async def healthz() -> dict[str, Any]:
-    return {"status": "ok", "service": "dataforge-api", "version": APP_VERSION, "llm": llm_from_env() is not None}
+    return {
+        "status": "ok",
+        "service": "dataforge-api",
+        "version": APP_VERSION,
+        "llm": llm_from_env() is not None,
+        "auth": auth_mode(),
+    }
 
 
 @app.get("/")
@@ -262,8 +320,48 @@ async def root() -> dict[str, str]:
     return {"service": "dataforge-api", "version": APP_VERSION, "docs": "/docs"}
 
 
+async def _start_run(
+    run_id: str, filename: str, ext: str, size: int, upload_path: Path, owner: str | None
+) -> dict[str, Any]:
+    output_dir = OUTPUT_ROOT / run_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    rec: dict[str, Any] = {
+        "run_id": run_id,
+        "filename": filename,
+        "format": ext.lstrip("."),
+        "size_bytes": size,
+        "status": "queued",
+        "current_phase": 1,
+        "steps_completed": [],
+        "steps_skipped": [],
+        "business_domain": None,
+        "created_at": _now_iso(),
+        "started_at": None,
+        "finished_at": None,
+        "duration_s": None,
+        "error": None,
+        "llm": None,
+        "owner": owner,
+        "share_token": new_share_token(),
+        "events": [],
+    }
+    async with RUNS_LOCK:
+        RUNS[run_id] = rec
+        _persist(rec)
+    asyncio.create_task(_run_analysis(run_id, upload_path, output_dir))
+    return {
+        "run_id": run_id,
+        "status": "queued",
+        "share_token": rec["share_token"],
+        "status_url": f"/api/status/{run_id}",
+        "results_url": f"/api/results/{run_id}",
+        **_links(rec),
+    }
+
+
 @app.post("/api/analyze", status_code=201)
-async def analyze(file: UploadFile = File(...)) -> dict[str, Any]:
+async def analyze(file: UploadFile = File(...), user: User = Depends(require_user)) -> dict[str, Any]:
+    LIMITER.check(f"user:{user.id}", USER_RUNS_PER_HOUR)
     filename = Path(file.filename or "upload.csv").name
     ext = Path(filename).suffix.lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -289,51 +387,56 @@ async def analyze(file: UploadFile = File(...)) -> dict[str, Any]:
         shutil.rmtree(upload_dir, ignore_errors=True)
         raise _error(400, "empty_file", "Empty file", "The uploaded file is empty")
 
-    output_dir = OUTPUT_ROOT / run_id
-    output_dir.mkdir(parents=True, exist_ok=True)
-    rec: dict[str, Any] = {
-        "run_id": run_id,
-        "filename": filename,
-        "format": ext.lstrip("."),
-        "size_bytes": size,
-        "status": "queued",
-        "current_phase": 1,
-        "steps_completed": [],
-        "steps_skipped": [],
-        "business_domain": None,
-        "created_at": _now_iso(),
-        "started_at": None,
-        "finished_at": None,
-        "duration_s": None,
-        "error": None,
-        "llm": None,
-        "events": [],
-    }
-    async with RUNS_LOCK:
-        RUNS[run_id] = rec
-        _persist(rec)
-    asyncio.create_task(_run_analysis(run_id, upload_path, output_dir))
-    return {
-        "run_id": run_id,
-        "status": "queued",
-        "status_url": f"/api/status/{run_id}",
-        "results_url": f"/api/results/{run_id}",
-        "ws_url": f"/ws/{run_id}",
-    }
+    return await _start_run(run_id, filename, ext, size, upload_path, user.id)
+
+
+@app.get("/api/samples")
+async def list_samples() -> dict[str, Any]:
+    return {"samples": [name for name in SAMPLE_FILES if (SAMPLES_DIR / name).is_file()]}
+
+
+@app.post("/api/samples/{name}", status_code=201)
+async def analyze_sample(
+    name: str, request: Request, user: User | None = Depends(optional_user)
+) -> dict[str, Any]:
+    """Analyze a bundled sample dataset. Works signed out (rate limited per IP)."""
+    source = SAMPLES_DIR / name
+    if name not in SAMPLE_FILES or not source.is_file():
+        raise _error(404, "not_found", "Sample not found", f"Available: {list(SAMPLE_FILES)}")
+    if user is not None:
+        LIMITER.check(f"user:{user.id}", USER_RUNS_PER_HOUR)
+    else:
+        LIMITER.check(f"ip:{client_ip(request)}", ANON_RUNS_PER_HOUR)
+    run_id = str(uuid.uuid4())
+    upload_dir = UPLOAD_ROOT / run_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = upload_dir / name
+    shutil.copyfile(source, upload_path)
+    owner = user.id if user else None
+    return await _start_run(run_id, name, source.suffix, upload_path.stat().st_size, upload_path, owner)
 
 
 @app.get("/api/status/{run_id}")
-async def get_status(run_id: str) -> dict[str, Any]:
-    rec = await _get_run(run_id)
+async def get_status(
+    run_id: str, t: str | None = None, user: User | None = Depends(optional_user)
+) -> dict[str, Any]:
+    rec = await _readable_run(run_id, user, t)
     async with RUNS_LOCK:
         payload = {k: rec.get(k) for k in PUBLIC_FIELDS}
         payload["events"] = rec["events"][-50:]
+        payload["share_token"] = rec["share_token"]
+        payload["links"] = _links(rec)
+        payload["is_owner"] = user is not None and user.id == rec.get("owner")
     return payload
 
 
 @app.get("/api/results/{run_id}")
-async def get_results(run_id: str) -> dict[str, Any]:
-    rec = await _get_run(run_id)
+async def get_results(
+    run_id: str, t: str | None = None, user: User | None = Depends(optional_user)
+) -> dict[str, Any]:
+    rec = await _readable_run(run_id, user, t)
+    token = rec["share_token"]
+    files = _links(rec)["files"]
     if rec["status"] in ("queued", "running"):
         return {"run_id": run_id, "status": rec["status"], "message": "Results not ready — poll /api/status"}
     if rec["status"] == "failed":
@@ -345,7 +448,7 @@ async def get_results(run_id: str) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         snapshot = {}
     reports = {
-        fmt: f"/api/download/{run_id}/{fmt}" if (output_dir / name).exists() else None
+        fmt: f"/api/download/{run_id}/{fmt}?t={token}" if (output_dir / name).exists() else None
         for fmt, name in REPORT_FILES.items()
     }
     viz_dir = output_dir / "visualizations"
@@ -368,8 +471,8 @@ async def get_results(run_id: str) -> dict[str, Any]:
         "evaluation": snapshot.get("evaluation"),
         "dashboard": snapshot.get("dashboard") or {},
         "report_urls": reports,
-        "report_view_url": f"/api/runs/{run_id}/files/report.html" if reports["html"] else None,
-        "charts": [{"name": c, "url": f"/api/runs/{run_id}/files/visualizations/{c}"} for c in charts],
+        "report_view_url": f"{files}/report.html" if reports["html"] else None,
+        "charts": [{"name": c, "url": f"{files}/visualizations/{c}"} for c in charts],
         "counts": {"kpis": len(kpis), "insights": len(insights), "visualizations": len(charts)},
         "trace": {
             "steps_completed": snapshot.get("steps_completed") or rec.get("steps_completed", []),
@@ -380,10 +483,12 @@ async def get_results(run_id: str) -> dict[str, Any]:
 
 
 @app.get("/api/download/{run_id}/{fmt}")
-async def download(run_id: str, fmt: str) -> FileResponse:
+async def download(
+    run_id: str, fmt: str, t: str | None = None, user: User | None = Depends(optional_user)
+) -> FileResponse:
     if fmt not in REPORT_FILES:
         raise _error(400, "bad_format", "Bad format", "fmt must be html, json, or pdf")
-    rec = await _get_run(run_id)
+    rec = await _readable_run(run_id, user, t)
     if rec["status"] != "done":
         raise _error(409, "not_ready", "Not ready", "Run not done yet")
     path = OUTPUT_ROOT / run_id / REPORT_FILES[fmt]
@@ -392,10 +497,11 @@ async def download(run_id: str, fmt: str) -> FileResponse:
     return FileResponse(str(path), media_type=MEDIA_TYPES[fmt], filename=f"dataforge-{run_id}.{fmt}")
 
 
-@app.get("/api/runs/{run_id}/files/{file_path:path}")
-async def run_file(run_id: str, file_path: str) -> FileResponse:
-    """Serve a report asset so report.html's relative chart links work."""
-    await _get_run(run_id)
+@app.get("/api/runs/{run_id}/{t}/files/{file_path:path}")
+async def run_file(run_id: str, t: str, file_path: str) -> FileResponse:
+    """Serve a report asset. The share token sits in the path (not the query) so
+    report.html's relative chart links resolve with the same access."""
+    await _readable_run(run_id, None, t)
     root = (OUTPUT_ROOT / run_id).resolve()
     target = (root / file_path).resolve()
     allowed = target.suffix in (".html", ".js", ".json", ".pdf", ".png")
@@ -405,19 +511,25 @@ async def run_file(run_id: str, file_path: str) -> FileResponse:
 
 
 @app.get("/api/history")
-async def history(limit: int = 20) -> dict[str, Any]:
+async def history(limit: int = 20, user: User = Depends(require_user)) -> dict[str, Any]:
     limit = max(1, min(limit, 100))
     async with RUNS_LOCK:
-        items = sorted(RUNS.values(), key=lambda r: r.get("created_at") or "", reverse=True)[:limit]
-        runs = [{k: r.get(k) for k in PUBLIC_FIELDS} for r in items]
+        mine = [r for r in RUNS.values() if r.get("owner") == user.id]
+        items = sorted(mine, key=lambda r: r.get("created_at") or "", reverse=True)[:limit]
+        runs = [
+            {**{k: r.get(k) for k in PUBLIC_FIELDS}, "share_token": r["share_token"]}
+            for r in items
+        ]
     return {"runs": runs, "count": len(runs)}
 
 
 @app.websocket("/ws/{run_id}")
-async def ws_run(websocket: WebSocket, run_id: str) -> None:
+async def ws_run(websocket: WebSocket, run_id: str, t: str | None = None) -> None:
     await websocket.accept()
     async with RUNS_LOCK:
         rec = RUNS.get(run_id) if RUN_ID_RE.match(run_id) else None
+        if rec is not None and not can_read(rec, None, t):
+            rec = None
         backlog = list(rec["events"]) if rec else []
     if rec is None:
         await websocket.send_json({"type": "error", "detail": "Run not found", "run_id": run_id})
@@ -441,10 +553,16 @@ async def ws_run(websocket: WebSocket, run_id: str) -> None:
 
 
 @app.delete("/api/runs/{run_id}")
-async def delete_run(run_id: str, x_admin_token: str | None = Header(default=None)) -> dict[str, str]:
-    if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
-        raise _error(403, "forbidden", "Forbidden", "A valid X-Admin-Token header is required")
+async def delete_run(
+    run_id: str,
+    x_admin_token: str | None = Header(default=None),
+    user: User | None = Depends(optional_user),
+) -> dict[str, str]:
     rec = await _get_run(run_id)
+    is_admin = bool(ADMIN_TOKEN) and x_admin_token == ADMIN_TOKEN
+    is_owner = user is not None and rec.get("owner") is not None and user.id == rec["owner"]
+    if not (is_admin or is_owner):
+        raise _error(403, "forbidden", "Forbidden", "Only the run's owner can delete it")
     if rec["status"] in ("queued", "running"):
         raise _error(409, "running", "Run in progress", "Wait for the run to finish before deleting it")
     async with RUNS_LOCK:

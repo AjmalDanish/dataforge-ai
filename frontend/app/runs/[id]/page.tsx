@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import {
   AgentEvent,
   RunEvent,
@@ -12,6 +12,7 @@ import {
   getStatus,
   wsUrl,
 } from "@/lib/api";
+import { useApiToken } from "@/lib/auth";
 
 const PHASES = ["Intake", "Prep", "Understand", "Deep analysis", "Statistics", "Synthesis", "Output"];
 const PIPELINE: { phase: number; agents: string[] }[] = [
@@ -137,6 +138,11 @@ export default function RunPage() {
   const [events, setEvents] = useState<RunEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [chart, setChart] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  // Access: the share token from the link (?t=), and/or the owner's session.
+  const urlShare = useSearchParams().get("t");
+  const getToken = useApiToken();
+  const share = urlShare || status?.share_token || null;
 
   const terminal = status ? TERMINAL.has(status.status) : false;
 
@@ -146,7 +152,7 @@ export default function RunPage() {
     let stop = false;
     const tick = async () => {
       try {
-        const s = await getStatus(id);
+        const s = await getStatus(id, urlShare, await getToken());
         if (stop) return;
         setStatus(s);
         setEvents((prev) => (s.events.length >= prev.length ? s.events : prev));
@@ -161,29 +167,37 @@ export default function RunPage() {
       stop = true;
       clearInterval(t);
     };
-  }, [id, terminal]);
+  }, [id, terminal, urlShare, getToken]);
 
-  // Live events.
+  // Live events (the WebSocket authenticates with the share token).
   useEffect(() => {
-    if (!id) return;
+    if (!id || !share) return;
     let ws: WebSocket | null = null;
     try {
-      ws = new WebSocket(wsUrl(id));
+      ws = new WebSocket(wsUrl(`/ws/${id}?t=${encodeURIComponent(share)}`));
       ws.onmessage = (msg) => {
         const ev = JSON.parse(msg.data) as RunEvent;
         if (ev.type === "ping") return;
         setEvents((prev) => (prev.some((p) => p.ts === ev.ts && p.type === ev.type) ? prev : [...prev, ev]));
-        if (ev.type === "done" || ev.type === "error") getStatus(id).then(setStatus).catch(() => {});
+        if (ev.type === "done" || ev.type === "error") getStatus(id, share, null).then(setStatus).catch(() => {});
       };
     } catch {
       // polling covers environments where WebSockets are blocked
     }
     return () => ws?.close();
-  }, [id]);
+  }, [id, share]);
 
   useEffect(() => {
-    if (id && status?.status === "done" && !results) getResults(id).then(setResults).catch((e) => setError(String(e)));
-  }, [id, status?.status, results]);
+    if (id && share && status?.status === "done" && !results)
+      getResults(id, share, null).then(setResults).catch((e) => setError(String(e)));
+  }, [id, share, status?.status, results]);
+
+  const copyShareLink = async () => {
+    if (!share) return;
+    await navigator.clipboard.writeText(`${window.location.origin}/runs/${id}?t=${share}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const agentEvents = useMemo(() => events.filter((e): e is AgentEvent => e.type === "agent"), [events]);
 
@@ -218,12 +232,21 @@ export default function RunPage() {
             {status?.llm ? ` • LLM: ${status.llm}` : status ? " • rule-based (no LLM key on server)" : ""}
           </p>
         </div>
-        <span className={`rounded px-3 py-1 text-sm font-semibold ${statusBadge(status?.status || "queued")}`}>{status?.status || "connecting…"}</span>
+        <div className="flex items-center gap-2">
+          {share && (
+            <button onClick={copyShareLink} className="rounded border border-slate-700 px-3 py-1 text-sm text-slate-300 hover:bg-slate-900" title="Anyone with this link can view the run">
+              {copied ? "Link copied ✓" : "Copy share link"}
+            </button>
+          )}
+          <span className={`rounded px-3 py-1 text-sm font-semibold ${statusBadge(status?.status || "queued")}`}>{status?.status || "connecting…"}</span>
+        </div>
       </div>
 
       {error && !status && (
         <div className="rounded border border-red-900 bg-red-950 px-4 py-3 text-sm text-red-200">
-          Could not reach the API: {error}. The backend may be cold-starting — this page retries automatically.
+          {/not found/i.test(error)
+            ? "Run not found, or you don't have access. Open it from your History while signed in, or use its share link."
+            : `Could not reach the API: ${error}. The backend may be cold-starting — this page retries automatically.`}
         </div>
       )}
 
@@ -366,8 +389,8 @@ export default function RunPage() {
 
       <p className="text-xs text-slate-500">
         Run ID: {id} •{" "}
-        <a href={apiUrl(`/api/status/${id}`)} target="_blank" rel="noreferrer" className="underline">raw status</a> •{" "}
-        <a href={apiUrl(`/api/results/${id}`)} target="_blank" rel="noreferrer" className="underline">raw results</a>
+        <a href={apiUrl(`/api/status/${id}?t=${share ?? ""}`)} target="_blank" rel="noreferrer" className="underline">raw status</a> •{" "}
+        <a href={apiUrl(`/api/results/${id}?t=${share ?? ""}`)} target="_blank" rel="noreferrer" className="underline">raw results</a>
       </p>
     </div>
   );

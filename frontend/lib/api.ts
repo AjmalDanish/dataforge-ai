@@ -29,8 +29,17 @@ export interface LifecycleEvent {
 
 export type RunEvent = AgentEvent | LifecycleEvent;
 
+export interface RunLinks {
+  run_page: string;
+  files: string;
+  ws: string;
+}
+
 export interface Status {
   run_id: string;
+  share_token: string;
+  links?: RunLinks;
+  is_owner?: boolean;
   filename: string;
   status: RunStatus;
   current_phase: number;
@@ -85,8 +94,18 @@ export function apiUrl(path: string): string {
   return `${API_URL}${path}`;
 }
 
-export function wsUrl(runId: string): string {
-  return `${API_URL.replace(/^http/, "ws")}/ws/${runId}`;
+export function wsUrl(path: string): string {
+  return `${API_URL.replace(/^http/, "ws")}${path}`;
+}
+
+type Token = string | null | undefined;
+
+function headers(token: Token): Record<string, string> {
+  return token ? { ...LT_HEADERS, Authorization: `Bearer ${token}` } : LT_HEADERS;
+}
+
+function withShare(path: string, share: Token): string {
+  return share ? `${path}${path.includes("?") ? "&" : "?"}t=${encodeURIComponent(share)}` : path;
 }
 
 async function json<T>(r: Response, what: string): Promise<T> {
@@ -97,31 +116,35 @@ async function json<T>(r: Response, what: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
-export async function analyze(file: File) {
+export interface Started extends RunLinks {
+  run_id: string;
+  status: RunStatus;
+  share_token: string;
+}
+
+export async function analyze(file: File, token: Token) {
   const fd = new FormData();
   fd.append("file", file);
-  const r = await fetch(`${API_URL}/api/analyze`, { method: "POST", body: fd, headers: LT_HEADERS });
-  return json<{ run_id: string; status: RunStatus; ws_url: string }>(r, "Upload");
+  const r = await fetch(`${API_URL}/api/analyze`, { method: "POST", body: fd, headers: headers(token) });
+  return json<Started>(r, "Upload");
 }
 
-export async function analyzeSample(name: string) {
-  const r = await fetch(`/samples/${name}`);
-  if (!r.ok) throw new Error(`Sample ${name} not found`);
-  const blob = await r.blob();
-  return analyze(new File([blob], name, { type: "text/csv" }));
+export async function analyzeSample(name: string, token: Token) {
+  const r = await fetch(`${API_URL}/api/samples/${encodeURIComponent(name)}`, { method: "POST", headers: headers(token) });
+  return json<Started>(r, "Sample");
 }
 
-export async function getStatus(runId: string) {
-  const r = await fetch(`${API_URL}/api/status/${runId}`, { cache: "no-store", headers: LT_HEADERS });
+export async function getStatus(runId: string, share: Token, token: Token) {
+  const r = await fetch(withShare(`${API_URL}/api/status/${runId}`, share), { cache: "no-store", headers: headers(token) });
   return json<Status>(r, "Status");
 }
 
-export async function getResults(runId: string) {
-  const r = await fetch(`${API_URL}/api/results/${runId}`, { cache: "no-store", headers: LT_HEADERS });
+export async function getResults(runId: string, share: Token, token: Token) {
+  const r = await fetch(withShare(`${API_URL}/api/results/${runId}`, share), { cache: "no-store", headers: headers(token) });
   return json<Results>(r, "Results");
 }
 
-export async function getHistory(limit = 20) {
-  const r = await fetch(`${API_URL}/api/history?limit=${limit}`, { cache: "no-store", headers: LT_HEADERS });
+export async function getHistory(token: Token, limit = 20) {
+  const r = await fetch(`${API_URL}/api/history?limit=${limit}`, { cache: "no-store", headers: headers(token) });
   return json<{ runs: Status[]; count: number }>(r, "History");
 }

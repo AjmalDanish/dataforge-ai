@@ -83,7 +83,8 @@ def test_full_run_lifecycle(api):
     assert report.status_code == 200 and "Executive Summary" in report.text
     chart = client.get(results["charts"][0]["url"])
     assert chart.status_code == 200
-    assert client.get(f"/api/runs/{run_id}/files/visualizations/plotly.min.js").status_code == 200
+    files = status["links"]["files"]
+    assert client.get(f"{files}/visualizations/plotly.min.js").status_code == 200
 
     history = client.get("/api/history").json()
     assert history["runs"][0]["run_id"] == run_id
@@ -93,9 +94,8 @@ def test_full_run_lifecycle(api):
     module._load_runs_from_disk()
     assert client.get(f"/api/status/{run_id}").json()["status"] == "done"
 
-    assert client.delete(f"/api/runs/{run_id}").status_code == 403
-    deleted = client.delete(f"/api/runs/{run_id}", headers={"X-Admin-Token": "secret"})
-    assert deleted.status_code == 200
+    # Dev mode: the single local user owns every run and may delete it.
+    assert client.delete(f"/api/runs/{run_id}").status_code == 200
     assert client.get(f"/api/status/{run_id}").status_code == 404
 
 
@@ -117,10 +117,13 @@ def test_rejects_path_traversal(api):
     resp = client.post("/api/analyze", files={"file": ("s.csv", CSV, "text/csv")})
     run_id = resp.json()["run_id"]
     _wait(client, run_id)
+    files = client.get(f"/api/status/{run_id}").json()["links"]["files"]
     secret = Path(module.OUTPUT_ROOT).parent / "secret.html"
     secret.write_text("nope")
-    assert client.get(f"/api/runs/{run_id}/files/%2e%2e/%2e%2e/secret.html").status_code == 404
-    assert client.get(f"/api/runs/{run_id}/files/run.py").status_code == 404
+    assert client.get(f"{files}/%2e%2e/%2e%2e/secret.html").status_code == 404
+    assert client.get(f"{files}/run.py").status_code == 404
+    # Without the run's share token, assets are not served at all.
+    assert client.get(f"/api/runs/{run_id}/wrong-token/files/report.html").status_code == 404
 
 
 def test_unknown_run_and_bad_format(api):
@@ -132,11 +135,12 @@ def test_unknown_run_and_bad_format(api):
 
 def test_websocket_replays_agent_events(api):
     _, client = api
-    run_id = client.post("/api/analyze", files={"file": ("s.csv", CSV, "text/csv")}).json()["run_id"]
+    started = client.post("/api/analyze", files={"file": ("s.csv", CSV, "text/csv")}).json()
+    run_id = started["run_id"]
     _wait(client, run_id)
 
     agents = []
-    with client.websocket_connect(f"/ws/{run_id}") as ws:
+    with client.websocket_connect(started["ws"]) as ws:
         while True:
             event = ws.receive_json()
             if event["type"] == "agent":
@@ -153,3 +157,14 @@ def test_websocket_unknown_run(api):
     _, client = api
     with client.websocket_connect("/ws/not-a-run") as ws:
         assert ws.receive_json()["type"] == "error"
+
+
+def test_sample_endpoint_and_health(api):
+    _, client = api
+    assert client.get("/healthz").json()["auth"] == "dev"
+    assert client.get("/api/samples").json()["samples"] == ["employees.csv", "products.csv"]
+    started = client.post("/api/samples/products.csv")
+    assert started.status_code == 201
+    assert _wait(client, started.json()["run_id"])["status"] == "done"
+    assert client.post("/api/samples/../../etc/passwd").status_code == 404
+    assert client.post("/api/samples/secret.csv").status_code == 404

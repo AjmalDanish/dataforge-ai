@@ -17,7 +17,8 @@ COPY backend/requirements.txt backend/
 RUN pip install -r backend/requirements.txt
 
 COPY dataforge/ dataforge/
-COPY backend/app.py backend/
+COPY backend/app.py backend/security.py backend/
+COPY datasets/ datasets/
 
 USER app
 EXPOSE 7860

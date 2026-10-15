@@ -33,7 +33,7 @@ export default function HomePage() {
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
           <h2 className="font-semibold">How it works</h2>
           <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-slate-300">
-            <li>Upload CSV / XLSX / Parquet / JSON (≤100 MB, ≤1M rows)</li>
+            <li>Sign in and upload CSV / XLSX / Parquet / JSON</li>
             <li>Watch 13 agents run live — retries and skips are shown as they happen</li>
             <li>Get KPI cards, ranked insights, charts and an HTML / JSON / PDF report</li>
           </ol>
@@ -44,6 +44,7 @@ export default function HomePage() {
         </div>
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
           <h2 className="font-semibold">Try a sample</h2>
+          <p className="mt-1 text-xs text-slate-500">No account needed. Sign in to upload your own files and keep a private history.</p>
           <div className="mt-3 space-y-2">
             {SAMPLES.map((s) => (
               <div key={s.name} className="flex items-center justify-between rounded border border-slate-800 bg-slate-950 px-4 py-3">
