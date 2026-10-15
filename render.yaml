@@ -30,10 +30,10 @@ services:
         value: "10"
       - key: ANON_RUNS_PER_HOUR
         value: "5"
-      # Render's proxy appends its own address to X-Forwarded-For, so the client
-      # is the second entry from the right (one hop = the last entry would be the proxy).
+      # Render's X-Forwarded-For is "<client>, <Cloudflare edge>, <Render LB>" (measured):
+      # the client is the third entry from the right.
       - key: TRUSTED_PROXY_HOPS
-        value: "2"
+        value: "3"
       # Optional: enables the LLM-written executive summary (Render prompts for the value).
       - key: ANTHROPIC_API_KEY
         sync: false
