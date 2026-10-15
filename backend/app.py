@@ -315,6 +315,18 @@ async def healthz() -> dict[str, Any]:
     }
 
 
+@app.get("/api/debug/client-ip")
+async def debug_client_ip(request: Request) -> dict[str, Any]:
+    """TEMPORARY: echo the caller's own forwarding headers to calibrate TRUSTED_PROXY_HOPS."""
+    names = ("x-forwarded-for", "true-client-ip", "cf-connecting-ip", "x-real-ip", "forwarded")
+    return {
+        "headers": {n: request.headers.get(n) for n in names if request.headers.get(n)},
+        "peer": request.client.host if request.client else None,
+        "trusted_proxy_hops": os.getenv("TRUSTED_PROXY_HOPS"),
+        "client_ip": client_ip(request),
+    }
+
+
 @app.get("/")
 async def root() -> dict[str, str]:
     return {"service": "dataforge-api", "version": APP_VERSION, "docs": "/docs"}
