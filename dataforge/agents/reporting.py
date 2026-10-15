@@ -77,8 +77,7 @@ class ReportingAgent(Agent):
         """
         super().__init__(llm_provider, logger, retry_policy, failure_policy, timeout_seconds)
         self.name = "ReportingAgent"
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir = Path(output_dir)  # created lazily in execute()
 
     async def execute(self, state: GraphState) -> AgentResult:
         """Generate comprehensive analysis report.
@@ -91,7 +90,7 @@ class ReportingAgent(Agent):
         """
         if getattr(state, "output_dir", None):
             self.output_dir = Path(state.output_dir)
-            self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(
             "Starting report generation",
             agent=self.name,

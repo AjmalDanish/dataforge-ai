@@ -80,8 +80,7 @@ class VisualizationAgent(Agent):
         """
         super().__init__(llm_provider, logger, retry_policy, failure_policy, timeout_seconds)
         self.name = "VisualizationAgent"
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir = Path(output_dir)  # created lazily in execute()
 
     async def execute(self, state: GraphState) -> AgentResult:
         """Create visualizations for the data.
@@ -119,7 +118,7 @@ class VisualizationAgent(Agent):
         # Use per-run output dir when available (backend sets state.output_dir per run)
         if getattr(state, "output_dir", None):
             self.output_dir = Path(state.output_dir) / "visualizations"
-            self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(
             "Starting visualization generation",
             agent=self.name,

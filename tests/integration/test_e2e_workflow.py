@@ -217,3 +217,21 @@ async def test_text_column_with_one_date_is_not_destroyed(tmp_path):
     csv = "note,amount\n2021-01-05,10\n" + "\n".join(f"free text {i},{i}" for i in range(20))
     final = await _run(tmp_path, csv)
     assert final.get("cleaned_data")["note"].notna().all()
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_writes_only_to_output_dir(tmp_path, monkeypatch):
+    """Containers run with a read-only working dir: nothing may be created in cwd."""
+    cwd = tmp_path / "cwd"
+    cwd.mkdir()
+    monkeypatch.chdir(cwd)
+    dataset = tmp_path / "data.csv"
+    dataset.write_text(EMPLOYEES, encoding="utf-8")
+
+    final = await run_workflow(
+        GraphState(input_dataset_path=str(dataset), output_dir=str(tmp_path / "out"))
+    )
+
+    assert "ReportingAgent" in final.steps_completed
+    assert list(cwd.iterdir()) == []
