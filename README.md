@@ -155,7 +155,7 @@ Runs execute in a worker thread so the API stays responsive during analysis; run
 
 ## Deployment
 
-- **API:** the root [Dockerfile](Dockerfile) runs as a non-root user on port 7860, which works as-is on HuggingFace Spaces (Docker SDK), Render, Fly.io or any container host. Set `FRONTEND_URL` to your frontend origin to restrict CORS, and mount a volume at `/data` to keep runs across redeploys.
+- **API:** the root [Dockerfile](Dockerfile) runs as a non-root user on port 7860 on any container host. [render.yaml](render.yaml) deploys it to Render's free tier (render.com → New → Blueprint → this repo); free instances sleep when idle, so the first request after a while takes about a minute. Set `FRONTEND_URL` to your frontend origin to restrict CORS, and mount a volume at `/data` to keep runs across redeploys.
 - **Frontend:** [netlify.toml](netlify.toml) builds `frontend/` on Netlify; Vercel works with `frontend/` as the root directory. Set `NEXT_PUBLIC_API_URL` to the API URL.
 
 ---

@@ -1,0 +1,24 @@
+# Render blueprint for the DataForge AI API (https://render.com/docs/blueprint-spec).
+# Deploy: render.com → New → Blueprint → select this repo.
+services:
+  - type: web
+    name: dataforge-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PORT
+        value: "7860"
+      # Free instances have 512 MB RAM: keep uploads small and run one analysis at a time.
+      - key: MAX_FILE_SIZE_MB
+        value: "25"
+      - key: MAX_CONCURRENT_RUNS
+        value: "1"
+      # Comma-separated allowed origins; "*" until the frontend URL is final.
+      - key: FRONTEND_URL
+        value: "*"
+      # Optional: enables the LLM-written executive summary (Render prompts for the value).
+      - key: ANTHROPIC_API_KEY
+        sync: false
