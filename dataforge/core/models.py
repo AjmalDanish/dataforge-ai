@@ -1,7 +1,7 @@
 """Core domain models for DataForge AI v2."""
 
 from datetime import datetime
-from enum import Enum, IntEnum
+from enum import Enum, IntEnum, StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -119,7 +119,7 @@ class AgentHistoryEntry(BaseModel):
 # ============================================================================
 
 
-class BusinessDomain(Enum):
+class BusinessDomain(StrEnum):
     """Business domain enumeration for domain detection.
 
     Represents the industry or business vertical that the dataset belongs to.

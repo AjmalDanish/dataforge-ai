@@ -1,550 +1,198 @@
-# DataForge AI v1.0.0
+# DataForge AI v2.0
 
-> Autonomous Multi-Agent Data Science Platform powered by True Graph Engineering
-
----
+> Autonomous business intelligence engine: upload a dataset, and 13 graph-orchestrated agents turn it into KPIs, ranked insights, charts and an executive report.
 
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
-![Coverage](https://img.shields.io/badge/coverage-73%25-green.svg)
-![Status](https://img.shields.io/badge/status-v1.0.0-brightgreen.svg)
-![Agents](https://img.shields.io/badge/agents-7-blue.svg)
+![Tests](https://img.shields.io/badge/tests-711%20passing-brightgreen.svg)
+![Coverage](https://img.shields.io/badge/coverage-88%25-green.svg)
 
-**DataForge AI** is an autonomous platform that orchestrates 7 specialized AI agents through a true branching graph workflow to analyze structured datasets. Simply provide a dataset file, and DataForge AI will dynamically plan, execute, validate, and report insights—completely autonomously.
+DataForge AI does the first pass a senior analyst would do on an unfamiliar dataset — validate it, clean it, work out what business it describes, compute the KPIs that matter for that business, find the correlations, outliers and trends, and write it all up — with no configuration and no prompts.
 
-This is **not** a chatbot. This is **not** AutoML. This is **not** a linear pipeline. This is an autonomous AI system with intelligent decision-making at every step.
-
----
-
-## 🎯 Project Overview
-
-DataForge AI demonstrates advanced AI engineering through:
-
-- **True Graph Workflow**: Dynamic branching with LangGraph, not a linear pipeline
-- **7 Specialized Agents**: Each with distinct responsibilities and decision-making capabilities
-- **Autonomous Planning**: Planner Agent intelligently routes workflow based on data characteristics
-- **Quality Gates**: Evaluator Agent validates results and triggers automatic remediation
-- **Production-Ready Code**: Clean architecture, comprehensive testing, type hints throughout
-
-## 💡 Why DataForge AI
-
-I built DataForge AI to demonstrate:
-
-1. **Graph Engineering Expertise**: Moving beyond linear pipelines to true branching workflows
-2. **Agent Architecture**: Designing autonomous agents with clear responsibilities and communication patterns
-3. **State Management**: Implementing robust state handling for complex multi-agent systems
-4. **Production Quality**: Writing code that's testable, maintainable, and ready for real-world use
-5. **AI System Design**: Creating systems that make intelligent decisions at every step
-
-This project showcases the skills needed for AI Engineer, ML Engineer, and Data Scientist roles at top tech companies.
+- **Graph, not a pipeline.** A LangGraph planner routes every step: agents run only when their inputs exist, failed agents are retried then skipped, and an evaluator gates the report and triggers remediation.
+- **Works offline, better with an LLM.** Every agent has a deterministic rule-based path. With an Anthropic or OpenAI key, the LLM also writes the executive narrative and recommendations, breaks ties in domain detection, and drafts business objectives.
+- **Auditable.** Every cleaning decision, skip, retry and quality check is recorded in the state and the report.
+- **Three ways to run it:** CLI, REST + WebSocket API, and a Next.js web app with a live agent graph.
 
 ---
 
-## 🚀 Quick Start
-
-### Installation
+## Quick start
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/dataforge-ai.git
+git clone https://github.com/AjmalDanish/dataforge-ai.git
 cd dataforge-ai
+pip install -r requirements.txt
 
-# Install dependencies
-pip install -e .
-
-# Set up API key (optional for demo mode)
-export OPENAI_API_KEY=your_key_here
+python -m dataforge analyze datasets/employees.csv          # → output/employees/
+python -m dataforge analyze sales.xlsx -o out/ --no-llm     # force rule-based
 ```
 
-### Usage
+```
+DataForge AI v2.0.0
+Dataset: datasets/employees.csv
+LLM:     anthropic / claude-opus-5-5
 
-**Basic Analysis**
-```bash
-python run.py datasets/employees.csv
+  [OK ] phase 1  DataValidationAgent                0.06s  Validation passed successfully (score: 1.00)
+  [OK ] phase 2  DataCleaningAgent                  0.08s  Cleaned dataset from 14x8 to 14x8 ...
+  ...
+  [OK ] phase 7  ReportingAgent                     0.25s  Generated executive report ...
+
+Analysis complete in 4.1s  (domain: hr)
+  HTML report:    output/employees/report.html
+  JSON report:    output/employees/report.json
+  PDF report:     output/employees/report.pdf
 ```
 
-**With Custom Output Directory**
-```bash
-python run.py datasets/employees.csv ./my_output
-```
+Supported inputs: **CSV, Excel (.xlsx/.xls), Parquet, JSON** (records or JSON lines), up to 100 MB / 1M rows by default.
 
-**Using CLI**
-```bash
-python -m dataforge.presentation.cli analyze datasets/products.csv --output ./output
-```
-
----
-
-## 📊 Example Outputs
-
-### Screenshots
-
-**HTML Report**
-![HTML Report](docs/screenshots/html_report.png)
-
-**Interactive Visualizations**
-![Visualizations](docs/screenshots/visualizations.png)
-
-**CLI Execution**
-![CLI Execution](docs/screenshots/cli_execution.png)
-
-### Generated Artifacts
-
-Running analysis on `datasets/employees.csv` produces:
-
-```
-output/employees/
-├── report.html                    # Interactive HTML report
-├── report.json                    # Machine-readable JSON
-├── execution_*.log                # Structured execution logs
-└── visualizations/                # Generated charts
-    ├── distribution_age.html       # Distribution plots
-    ├── boxplot_salary.html         # Box plots
-    ├── correlation_heatmap.html    # Correlation matrix
-    ├── scatter_salary_age.html     # Scatter plots
-    └── bar_department.html         # Bar charts
-```
-
-See [docs/examples/](docs/examples/) for complete sample outputs.
-
----
-
-## ✨ Key Features
-
-### 1. True Graph Workflow
-
-- **Dynamic Branching**: The Planner Agent intelligently routes between agents based on data characteristics
-- **No Linear Pipeline**: Each agent makes decisions about what to do next
-- **Self-Optimizing**: Automatically skips unnecessary steps (e.g., statistics for non-numeric data)
-- **Quality Gates**: EvaluatorAgent validates output quality with automatic retry logic
-
-```
-                    ┌─────────────┐
-                    │   START     │
-                    └──────┬──────┘
-                           │
-                    ┌─────────────┐
-                    │   Planner   │ ← Central Decision Maker
-                    │   Agent     │   (runs after each agent)
-                    └──────┬──────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-              ▼            ▼            ▼
-       ┌──────────┐  ┌──────────┐  ┌──────────┐
-       │Ingestion│  │Profiling│  │Statistics│  │Evaluation│
-       │  Agent   │  Agent   │  │   Agent   │ │  Agent   │
-       └──────────┘  └──────────┘  └──────────┘  └──────────┘
-            │            │            │
-            ▼            ▼            ▼
-       ┌─────────────┐ ┌─────────────┐
-       │Visualization│ │  Reporting│
-       │   Agent     │ │   Agent     │
-       └──────┬──────┘  └──────┬──────┘
-                  │              │
-                  ▼
-           ┌─────────────┐
-           │  Reporting  │
-           │   Agent     │
-           └─────────────┘
-
-            │
-           ┌─────────┐
-            │   END   │
-            └─────────┘
-```
-
-### 2. 7 Specialized AI Agents
-
-| Agent | Role | Key Capabilities |
-|-------|------|-------------------|
-| **PlannerAgent** | Decision Engine | Routes workflow, handles retry logic, decides next action |
-| **EvaluatorAgent** | Quality Control | Validates analysis quality, triggers remediation on failure |
-| **DataIngestionAgent** | Data Loading | CSV/Parquet support, encoding fallback |
-| **DataProfilingAgent** | Understanding | Semantic type detection, missing value analysis |
-| **StatisticalAnalysisAgent** | Number Crunching | Descriptive stats, correlations, outlier detection |
-| **VisualizationAgent** | Visual Storytelling | Interactive HTML plots, publication-quality charts |
-| **ReportingAgent** | Comprehensive Documentation | HTML + JSON reports with insights |
-
-### 3. Smart Features
-
-- **Adaptive Planning**: Skips statistics for non-numeric datasets
-- **Quality Gates**: Automatic retry logic (max 3 retries)
-- **Encoding Fallback**: UTF-8 → Latin-1 → CP1252 for international data
-- **Vendor-Agnostic**: Works with OpenAI and Anthropic (extensible to others)
-- **Comprehensive Logging**: Structured logging with timestamps for debugging
-- **Observability**: All operations logged with agent, duration, and decision data
-
----
-
-## 🏗️ Architecture
-
-### System Architecture
-
-📊 **Interactive Diagrams Available**: See [docs/diagrams/](docs/diagrams/) for detailed Mermaid diagrams:
-- [Architecture Diagram](docs/diagrams/architecture.md) - Visual representation of all layers and components
-- [Workflow Diagram](docs/diagrams/workflow.md) - Complete execution flow with error handling
-- [GraphState Model](docs/diagrams/graphstate.md) - State structure and mutation patterns
-- [Agent Interaction](docs/diagrams/agent-interaction.md) - Sequence diagram of agent communication
-- [Data Flow](docs/diagrams/data-flow.md) - Data transformation pipeline
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     User Interface Layer                      │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │   CLI (Click) │  │  execute.py   │  │   run.py      │       │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘       │
-└─────────┼──────────────────┼──────────────────┼───────────────┘
-          │                  │                  │
-          └──────────────────┴──────────────────┘
-                            │
-┌─────────────────────────────────────────────────────────────┐
-│                    Graph Orchestration Layer                  │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │           LangGraph StateGraph (workflow.py)           │  │
-│  │  - Planner Node (decision routing)                    │  │
-│  │  - Agent Nodes (ingestion, profiling, statistics,     │  │
-│  │                visualization, evaluation, reporting)   │  │
-│  │  - Conditional Edges (dynamic branching)              │  │
-│  └────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
-                            │
-┌─────────────────────────────────────────────────────────────┐
-│                      Agent Layer                              │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │  Planner │ │Evaluator │ │Ingestion │ │ Profiling │        │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                     │
-│  │Statistics│ │Visualization│ │ Reporting │                     │
-│  └──────────┘ └──────────┘ └──────────┘                     │
-└─────────────────────────────────────────────────────────────┘
-                            │
-┌─────────────────────────────────────────────────────────────┐
-│                    Core Infrastructure Layer                    │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │GraphState│ │Structured│ │  LLM     │ │  Utils   │        │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
-└─────────────────────────────────────────────────────────────┘
-                            │
-┌─────────────────────────────────────────────────────────────┐
-│                  External Integrations Layer                  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐        │
-│  │  OpenAI  │ │Anthropic │ │  Pandas  │ │  Plotly  │        │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘        │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### GraphState Model
-
-```python
-class GraphState(BaseModel):
-    # Immutable Input
-    input_dataset_path: str
-    input_query: str | None = None
-    output_dir: str = "./output"
-
-    # Mutable Data (single source of truth)
-    data: dict[str, Any] = Field(
-        default_factory=dict,
-        description="All analysis data stored as key-value pairs"
-    )
-
-    # Execution Context
-    execution_id: str
-    steps_completed: list[str] = Field(default_factory=list)
-    agent_history: list[dict[str, Any]] = Field(default_factory=list)
-
-    # Validation & Retry
-    validation_status: str = "pending"
-    retry_count: int = 0
-    max_retries: int = 3
-
-    # Observability
-    logs: list[dict[str, Any]] = Field(default_factory=list)
-    metrics: dict[str, Any] = Field(default_factory=dict)
-
-    # Timing
-    start_time: str
-    end_time: str | None = None
-
-    # Methods
-    def get(key: str, default=None) -> Any: get()
-    def set(key, value) -> set()
-    def add_log(level, agent, message, **kwargs) -> add_log()
-    def add_agent_result(agent_name: str, result: dict) -> add_agent_result()
-    def update_step(step: str) -> update_step()
-    def increment_retry() -> increment_retry()
-    def add_metric(key, value) -> add_metric()
-    def mark_complete() -> mark_complete()
-```
-
----
-
-## 📁 Folder Structure
-
-```
-dataforge-ai/
-├── dataforge/                 # Main package
-│   ├── agents/               # 7 specialized agents
-│   │   ├── base.py           # Base agent abstract class
-│   │   ├── planner.py        # Decision engine
-│   │   ├── evaluator.py      # Quality validation
-│   │   ├── ingestion.py      # Data loading
-│   │   ├── profiling.py      # Column analysis
-│   │   ├── statistics.py     # Statistical analysis
-│   │   ├── visualization.py  # Visualizations
-│   │   └── reporting.py     # Report generation
-│   ├── core/                 # Core infrastructure
-│   │   ├── llm.py           # LLM abstraction
-│   │   ├── logger.py         # Structured logging
-│   │   └── state.py         # State management
-│   ├── graph/                # Workflow orchestration
-│   │   └── workflow.py       # LangGraph definition
-│   ├── infrastructure/        # External integrations
-│   │   └── llm_providers/   # LLM providers
-│   ├── presentation/         # User interfaces
-│   │   └── cli.py           # CLI interface
-│   └── shared/               # Shared utilities
-│       ├── config.py         # Settings
-│       ├── errors.py         # Custom exceptions
-│       └── utils.py          # Helper functions
-├── datasets/                 # Example datasets
-│   ├── employees.csv         # Employee demographics
-│   └── products.csv          # Product sales data
-├── docs/                     # Documentation
-│   ├── architecture.md       # System architecture
-│   ├── agents.md             # Agent documentation
-│   ├── graph_design.md       # Workflow design
-│   ├── examples/             # Example outputs
-│   └── screenshots/          # UI screenshots
-├── tests/                    # Test suite
-│   ├── integration/          # End-to-end tests
-│   └── unit/                 # Unit tests
-├── execute.py                # Direct execution script
-├── run.py                    # Main entry point
-├── pyproject.toml            # Project configuration
-├── README.md                 # This file
-└── LICENSE                   # MIT License
-```
-
----
-
-## 🛠️ Tech Stack
-
-### Core Technologies
-- **Python 3.11+** with type hints throughout
-- **LangGraph** (^0.0.20) for graph orchestration
-- **Pydantic** (^2.0.0) for data validation
-- **Click** (^8.1.0) for CLI interface
-
-### Data Processing
-- **Pandas** (^2.0.0) for data manipulation
-- **NumPy** (^1.24.0) for numerical operations
-- **SciPy** (^1.11.0) for statistical tests
-- **PyArrow** (^12.0.0) for Parquet support
-
-### Visualization
-- **Plotly** (^5.18.0) for interactive visualizations
-- **Kaleido** (^0.2.1) for static image export
-
-### AI/LLM
-- **OpenAI** (^1.0.0) for GPT models
-- **Anthropic** (^0.7.0) for Claude models
-- **Structlog** (^23.0.0) for structured logging
-
-### Development
-- **pytest** (^7.4.0) for testing
-- **pytest-cov** (^4.1.0) for coverage
-- **pytest-asyncio** (^0.21.0) for async tests
-- **black** (^23.0.0) for code formatting
-- **mypy** (^1.5.0) for type checking
-
----
-
-## 🧪 Testing
-
-### Test Coverage
-- **73% code coverage** across all modules
-- **72 tests passing** (71 unit + integration tests)
-- **Async test support** with pytest-asyncio
-
-### Running Tests
+### Web app
 
 ```bash
-# Run all tests
-pytest
+# API (http://localhost:8000, docs at /docs)
+pip install -r backend/requirements.txt
+uvicorn app:app --app-dir backend --port 8000
 
-# Run with coverage
-pytest --cov=dataforge --cov-report=html
-
-# Run specific test file
-pytest tests/integration/test_e2e_workflow.py
-
-# Run with verbose output
-pytest -v
+# Frontend (http://localhost:3000)
+cd frontend && npm install
+NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```
 
-### Test Structure
-- **Unit Tests**: Individual agent and component testing
-- **Integration Tests**: End-to-end workflow testing
-- **Agent Tests**: Planner, Evaluator, Ingestion, Profiling agents
-- **Core Tests**: State management, logging, utilities
+Upload a file (or click a sample on the home page) and watch the agents run live; results include KPI cards, insights, the LLM narrative, an interactive chart viewer, and HTML/JSON/PDF downloads.
 
----
-
-## 📖 Documentation
-
-📚 **Documentation Index**: See [docs/README.md](docs/README.md) for complete documentation navigation.
-
-### Core Documentation
-- **[docs/architecture.md](docs/architecture.md)** - Complete system architecture
-- **[docs/agents.md](docs/agents.md)** - All 7 agents and workflow
-- **[docs/graph_design.md](docs/graph_design.md)** - LangGraph workflow design
-- **[docs/requirements.md](docs/requirements.md)** - Functional and non-functional requirements
-- **[docs/development_guide.md](docs/development_guide.md)** - Development guide and coding standards
-
-### Interactive Diagrams
-- **[docs/diagrams/](docs/diagrams/)** - Mermaid diagrams for architecture, workflow, and data flow
-
-### Example Outputs
-- **[docs/examples/](docs/examples/)** - Sample HTML reports, JSON outputs, and visualizations
-
----
-
-## 🛠️ Known Limitations
-
-### Technical
-- No caching mechanism (computations not cached)
-- No file size or row count limits
-- No timeout enforcement
-- No parallel execution
-- No checkpoint/save state for recovery
-- No deadlock detection
-- No circuit breaker patterns
-
-### Data Processing
-- Supports only CSV and Parquet (no Excel, JSON, etc.)
-- No streaming support
-- No database connectors (file-based only)
-- No support for very large datasets (>1M rows)
-- No incremental updates
-
-### ML/AI Features
-- No predictive models (statistical analysis only)
-- No ML model training
-- No hyperparameter optimization
-- No feature importance analysis
-- No time series analysis
-- No clustering
-
-### Development
-- No type checking on Windows (mypy doesn't run)
-- No performance benchmarks
-- No stress tests
-- No chaos engineering tests
-
----
-
-## 🚦 Quick Start Guide
-
-### 1. Create test data
-
-Create `test.csv`:
-
-```python
-import pandas as pd
-
-df = pd.DataFrame({
-    "id": [1, 2, 3],
-    "name": ["Alice", "Bob", "Charlie"],
-    "age": [25, 30, 35],
-    "salary": [50000, 60000, 70000]
-})
-
-df.to_csv("test.csv", index=False)
-```
-
-### 2. Run analysis
+### Docker
 
 ```bash
-python run.py test.csv ./output
+docker build -t dataforge-api .
+docker run -p 7860:7860 -e ANTHROPIC_API_KEY=... dataforge-api
 ```
 
-### 3. Check outputs
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+    P{{PlannerAgent}}
+    P --> V[Validation] --> P
+    P --> C[Cleaning] --> P
+    P --> S[Schema] --> P
+    P --> D[Domain] --> P
+    P --> O[Objectives] --> P
+    P --> PR[Profiling] --> P
+    P --> F[Features] --> P
+    P --> K[KPIs] --> P
+    P --> ST[Statistics] --> P
+    P --> I[Insights] --> P
+    P --> VZ[Visualization] --> P
+    P --> E[Evaluator] --> P
+    P --> R[Reporting] --> P
+    P --> END((END))
+```
+
+Every agent returns to the **PlannerAgent**, which decides what runs next:
+
+| Rule | Behaviour |
+|---|---|
+| Preconditions | An agent is scheduled only once the state keys it needs exist (e.g. Statistics needs `profile`). |
+| Quality gate | A failed agent is retried up to 2 more times, then skipped and recorded in `steps_skipped`. |
+| Evaluation loop | If the Evaluator fails a check (no insights, no charts), the owning agent is re-run once and the result re-evaluated. |
+| Loop guard | A global step budget (80) ends the run; if it is exhausted the planner still produces a best-effort report. |
+| Timeouts | Every agent has a timeout (scaled by `DATAFORGE_TIMEOUT_SCALE`); a timeout counts as a failure. |
+
+### The agents
+
+| Phase | Agent | Produces | LLM use |
+|---|---|---|---|
+| 1 Intake | DataValidationAgent | `raw_data`, file metadata, validation report | — |
+| 2 Prep | DataCleaningAgent | `cleaned_data`, explained cleaning decisions | — |
+| 3 Understand | SchemaDetectionAgent | semantic types, keys, measures/dimensions | — |
+| 3 Understand | BusinessDomainDetectionAgent | domain (retail, HR, finance, … 10 total) | tie-breaker when rules are unsure |
+| 3 Understand | BusinessObjectiveDetectionAgent | business questions the data can answer | generates objectives (templates otherwise) |
+| 4 Deep analysis | DataProfilingAgent | per-column profile | — |
+| 4 Deep analysis | FeatureEngineeringAgent | temporal parts, ratios, bins | — |
+| 4 Deep analysis | KPIDiscoveryAgent | domain KPIs with trends | — |
+| 5 Statistics | StatisticalAnalysisAgent | descriptive stats, correlations, outliers | — |
+| 6 Synthesis | InsightGenerationAgent | ranked insights with actions | executive narrative + recommendations |
+| 7 Output | VisualizationAgent | interactive Plotly charts, KPI cards, dashboard | — |
+| 7 Output | EvaluatorAgent | quality verdict + remediation target | — |
+| 7 Output | ReportingAgent | `report.html`, `report.json`, `report.pdf` | renders the narrative |
+
+Identifier columns (`id`, `order_id`, …) are excluded from statistics, charts and KPIs, and KPIs are only computed from columns that actually match (no "revenue" computed from an unrelated column).
+
+---
+
+## LLM configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | — | Enables the LLM steps (Anthropic is preferred when both are set). |
+| `LLM_PROVIDER` | auto | Force `anthropic` or `openai`. |
+| `LLM_MODEL` | `claude-opus-5-5` / `gpt-4o` | Model override. |
+| `DATAFORGE_DISABLE_LLM` | — | `1` forces the rule-based path. |
+
+The Anthropic provider enables server-side refusal fallbacks (`fallbacks: "default"`), so a declined request is retried on a fallback model inside the same call. LLM output is only ever used on top of rule-based findings: the narrative prompt receives computed KPIs and insights and is told not to invent numbers, and any LLM failure falls back silently to the deterministic result.
+
+See [.env.example](.env.example) for every setting.
+
+---
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/analyze` | Upload a file (multipart `file`), returns `run_id` |
+| `GET` | `/api/status/{run_id}` | Status, phase, completed/skipped agents, recent events |
+| `GET` | `/api/results/{run_id}` | KPIs, insights, narrative, evaluation, chart and report URLs |
+| `GET` | `/api/download/{run_id}/{html\|json\|pdf}` | Report downloads |
+| `GET` | `/api/runs/{run_id}/files/{path}` | Report assets (the HTML report and its charts) |
+| `GET` | `/api/history` | Recent runs |
+| `DELETE` | `/api/runs/{run_id}` | Delete a run (requires `X-Admin-Token` if `DATAFORGE_ADMIN_TOKEN` is set) |
+| `WS` | `/ws/{run_id}` | Live events: one `{"type": "agent", ...}` per agent step, then `done`/`error` |
+
+Runs execute in a worker thread so the API stays responsive during analysis; run metadata is persisted to `OUTPUT_DIR/<run_id>/run.json` and reloaded on restart. Uploads are streamed to disk with a size cap, run IDs are validated, and asset paths are confined to the run's directory.
+
+---
+
+## Deployment
+
+- **API:** the root [Dockerfile](Dockerfile) runs as a non-root user on port 7860, which works as-is on HuggingFace Spaces (Docker SDK), Render, Fly.io or any container host. Set `FRONTEND_URL` to your frontend origin to restrict CORS, and mount a volume at `/data` to keep runs across redeploys.
+- **Frontend:** [netlify.toml](netlify.toml) builds `frontend/` on Netlify; Vercel works with `frontend/` as the root directory. Set `NEXT_PUBLIC_API_URL` to the API URL.
+
+---
+
+## Development
 
 ```bash
-ls -la output/
-# report.html    # Comprehensive HTML report
-# visualizations/*.html  # Interactive charts
-# execution_*.log  # Structured logs
+pip install -r requirements-dev.txt
+pytest                                  # 711 tests, ~1-2 min, coverage report in htmlcov/
+ruff check dataforge backend tests --select E9,F63,F7,F82
+cd frontend && npm run build            # type-checks the frontend
 ```
 
----
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the tests on Python 3.11–3.13 with an 85% coverage floor, builds the frontend, and builds and smoke-tests the Docker image.
 
-## 📁 Demo Datasets
+### Project layout
 
-### datasets/employees.csv (15 rows × 8 columns)
+```
+dataforge/
+  agents/            13 agents + planner (one file each)
+  graph/workflow.py  LangGraph wiring, run_workflow() with live events
+  core/              GraphState, domain models, LLM interface, logger
+  infrastructure/    file readers, LLM providers, chart engines, PDF renderer
+  presentation/cli.py
+backend/app.py       FastAPI + WebSocket server
+frontend/            Next.js 14 app (upload, live run view, history)
+tests/               unit, integration (full pipeline), api
+docs/                PRD, TRD, architecture, ADRs, agent docs
+```
 
-Employee demographics with salary and performance data.
+## Known limitations
 
-### datasets/products.csv (20 rows × 8 columns)
+- Single-dataset analysis only; no database connectors or multi-file joins yet.
+- KPI templates cover retail, HR and finance in depth; other domains fall back to generic KPIs.
+- Run storage is the local filesystem (`dataforge/db` holds SQLAlchemy models for a future Postgres backend; they are not wired in).
+- The API has no user accounts: anyone who can reach it can upload and view runs. Put it behind your own auth for anything beyond a demo.
 
-Product sales data with price, inventory, and ratings.
+## License
 
----
-
-## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
----
-
-## 📄 License
-
-MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-## ⭐ Star History
-
-If you find DataForge AI useful, please consider giving it a star!
-
----
-
-**Built with ❤️ for the data science community**
-
----
-
-## 🏗️ Roadmap
-
-### v1.1 (Planned)
-- LLM Integration: Wire LLMProvider into PlannerAgent for AI-assisted routing
-- Resource limits: Enforce max_file_size_mb and max_rows
-- Per-agent timeout: Implement asyncio.wait_for() wrappers
-- LangGraph upgrade: Upgrade to current stable version
-
-### v1.5 (Planned)
-- Caching layer: Cache computed results keyed by file hash
-- Parallel execution: Use asyncio.gather() for independent agents
-- Checkpoint persistence: Serialize GraphState for crash recovery
-- Additional formats: Excel, JSON support
-
-### v2.0 (Planned)
-- Web interface: FastAPI backend + HTML/JS frontend
-- Database connectors: PostgreSQL, SQLite, BigQuery
-- Analysis history: Store past runs in SQLite
-- Multi-user support: User accounts and shared analyses
-
----
-
-## 👤 Author
-
-**DataForge AI Contributors**
-
-Built as a demonstration of advanced AI engineering and graph workflow orchestration.
-
----
-
-**Version:** 1.0.0  
-**Release Date:** 2024  
-**Status:** Production Ready
+MIT — see [LICENSE](LICENSE).

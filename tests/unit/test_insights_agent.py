@@ -74,7 +74,7 @@ class TestInsightsContract:
         assert agent.failure_policy == FailurePolicy.SKIP
 
     def test_timeout(self, agent):
-        assert agent.timeout_seconds == 45
+        assert agent.timeout_seconds == 240
 
 
 class TestInsightsExecute:

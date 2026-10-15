@@ -21,11 +21,15 @@ from dataforge.shared.errors import (
 class AnthropicProvider(LLMProvider):
     """Anthropic implementation of LLM provider."""
 
+    DEFAULT_MODEL = "claude-opus-5-5"
     DEFAULT_MODELS = [
-        "claude-3-opus-20240229",
-        "claude-3-sonnet-20240229",
-        "claude-3-haiku-20240307",
+        "claude-opus-5-5",
+        "claude-sonnet-5-5",
+        "claude-haiku-5-5",
     ]
+    # Server-side refusal fallback (Claude API only); routes a declined request
+    # to a fallback model inside the same call.
+    FALLBACK_BETA = "server-side-fallback-2026-07-01"
 
     def __init__(self, config: LLMConfig):
         """Initialize the Anthropic provider.
@@ -78,21 +82,35 @@ class AnthropicProvider(LLMProvider):
                 else:
                     conversation_messages.append({"role": msg.role, "content": msg.content})
 
-            response = await self.client.messages.create(
+            # Current Claude models reject sampling params (temperature) and
+            # always think, so text must be read from the text blocks only.
+            response = await self.client.beta.messages.create(
                 model=effective_config.model,
-                system=system_message,
+                system=system_message or anthropic.omit,
                 messages=conversation_messages,
-                temperature=effective_config.temperature,
-                max_tokens=effective_config.max_tokens,
+                max_tokens=max(effective_config.max_tokens, 16000),
+                betas=[self.FALLBACK_BETA],
+                fallbacks="default",
             )
 
+            if response.stop_reason == "refusal":
+                category = getattr(response.stop_details, "category", None)
+                raise LLMProviderError(
+                    f"Anthropic declined the request (category: {category})",
+                    {"provider": "anthropic", "stop_reason": "refusal", "category": category},
+                )
+
+            text = "".join(block.text for block in response.content if block.type == "text")
             return LLMResponse(
-                content=response.content[0].text if response.content else "",
+                content=text,
                 model=response.model,
                 tokens_used=response.usage.input_tokens + response.usage.output_tokens,
                 finish_reason=response.stop_reason,
                 provider="anthropic",
             )
+
+        except LLMProviderError:
+            raise
 
         except anthropic.AuthenticationError as e:
             raise LLMAuthenticationError(

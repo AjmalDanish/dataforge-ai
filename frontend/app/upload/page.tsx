@@ -70,7 +70,7 @@ export default function UploadPage() {
         {busy ? "Uploading & queuing… (backend may cold-start ~30s)" : "Analyze → watch live graph"}
       </button>
 
-      <p className="text-xs text-slate-500">Files are processed privately on the HF Spaces backend and deleted when you delete the run. Nothing is kept on Netlify.</p>
+      <p className="text-xs text-slate-500">Files are processed on the API server and kept with the run until the run is deleted. Nothing is stored by the frontend host.</p>
     </div>
   );
 }

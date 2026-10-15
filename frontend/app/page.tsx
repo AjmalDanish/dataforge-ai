@@ -1,8 +1,9 @@
 import Link from "next/link";
+import SampleButton from "./SampleButton";
 
 const SAMPLES = [
-  { name: "employees.csv", rows: "15 × 8", hint: "HR • turnover / salary equity" },
-  { name: "products.csv", rows: "20 × 8", hint: "Retail • product / revenue" },
+  { name: "employees.csv", rows: "14 × 8", hint: "HR • salary, tenure, performance" },
+  { name: "products.csv", rows: "19 × 9", hint: "Retail • price, stock, sales, ratings" },
 ];
 
 export default function HomePage() {
@@ -14,8 +15,8 @@ export default function HomePage() {
           Upload data, get the answers a <span className="text-emerald-400">Senior Analyst</span> would give.
         </h1>
         <p className="mt-3 max-w-2xl text-slate-300">
-          DataForge runs a 13-agent LangGraph — validation → cleaning → schema → domain → KPI → insights → dashboard →
-          executive report. No config, no prompts. Built to prove Data Scientist / ML engineering depth.
+          DataForge runs a 13-agent LangGraph — validation → cleaning → schema → domain → KPIs → statistics → insights →
+          charts → quality gate → executive report (HTML, JSON, PDF). No config, no prompts.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/upload" className="rounded bg-emerald-500 px-5 py-2.5 font-semibold text-slate-950 hover:bg-emerald-400">
@@ -25,7 +26,7 @@ export default function HomePage() {
             View history
           </Link>
         </div>
-        <p className="mt-3 text-xs text-slate-500">Backend on HuggingFace Spaces may cold-start ~30s. Upload is free and private.</p>
+        <p className="mt-3 text-xs text-slate-500">A sleeping backend may take ~30s to cold-start on the first request.</p>
       </section>
 
       <section className="grid gap-6 md:grid-cols-2">
@@ -33,10 +34,13 @@ export default function HomePage() {
           <h2 className="font-semibold">How it works</h2>
           <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm text-slate-300">
             <li>Upload CSV / XLSX / Parquet / JSON (≤100 MB, ≤1M rows)</li>
-            <li>Watch 13 agents live — validation through executive report</li>
-            <li>Get KPI cards, ranked insights, dashboard, HTML/JSON report + share link</li>
+            <li>Watch 13 agents run live — retries and skips are shown as they happen</li>
+            <li>Get KPI cards, ranked insights, charts and an HTML / JSON / PDF report</li>
           </ol>
-          <p className="mt-3 text-xs text-slate-500">Every cleaning decision is logged and explained. Skipped agents are audited.</p>
+          <p className="mt-3 text-xs text-slate-500">
+            Every cleaning decision is logged and explained. With an LLM key on the server, Claude writes the executive
+            summary and breaks ties in domain detection; without one, everything runs rule-based.
+          </p>
         </div>
         <div className="rounded-xl border border-slate-800 bg-slate-900 p-6">
           <h2 className="font-semibold">Try a sample</h2>
@@ -47,7 +51,7 @@ export default function HomePage() {
                   <div className="font-mono text-sm">{s.name}</div>
                   <div className="text-xs text-slate-400">{s.rows} • {s.hint}</div>
                 </div>
-                <Link href="/upload" className="text-sm text-emerald-400 hover:text-emerald-300">Use →</Link>
+                <SampleButton name={s.name} />
               </div>
             ))}
           </div>
@@ -57,9 +61,12 @@ export default function HomePage() {
       <section className="rounded-xl border border-slate-800 bg-slate-900 p-6">
         <h2 className="font-semibold">Architecture</h2>
         <p className="mt-2 font-mono text-xs text-slate-400 break-all">
-          Next.js + Tailwind @ Netlify → FastAPI @ HuggingFace Spaces → LangGraph 13 agents → Neon Postgres (runs, events, KPIs, insights, checkpoints)
+          Next.js (Netlify / Vercel) → FastAPI + WebSocket (Docker, e.g. HuggingFace Spaces) → LangGraph planner + 13 agents → pandas / SciPy / Plotly / ReportLab
         </p>
-        <p className="mt-2 text-sm text-slate-300">Single repo, single main branch — docs cover PRD → TRD → UI/UX → Database (docs/PRD.md etc.).</p>
+        <p className="mt-2 text-sm text-slate-300">
+          A planner agent routes every step: agents run when their inputs exist, failures are retried then skipped, and an
+          evaluator gates the report. See docs/v2/ARCHITECTURE.md.
+        </p>
       </section>
     </div>
   );

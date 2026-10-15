@@ -8,12 +8,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Current Version** | v1.0.0 (Released, Frozen) |
-| **Current Branch** | v2-development |
-| **Current Sprint** | Sprint 1 - Foundation |
-| **Overall Progress** | 7/7 Sprint 1 tasks complete (100%) |
-| **Completed Sprint** | None |
-| **Next Task** | Sprint 2: Data Agents |
+| **Current Version** | v2.0.0 (2026-10-15) |
+| **Current Branch** | main |
+| **Current Sprint** | Sprint 6 - Polish & Release (complete except tagging) |
+| **Overall Progress** | All sprints delivered; open items below are post-2.0 enhancements |
+| **Tests** | 711 passing, 87% coverage |
+| **Next Task** | Tag v2.0.0 and publish the GitHub release |
 
 ---
 
@@ -47,14 +47,14 @@ Sprint-based development
 
 ## Phase 0: v1.1 Stabilization
 
-- [ ] 🔴 Wire LLMProvider into PlannerAgent for LLM-assisted routing
-- [ ] 🔴 Enforce max_file_size_mb and max_rows in DataIngestionAgent
-- [ ] 🟠 Upgrade langgraph from ^0.0.20 to latest stable
-- [ ] 🟠 Add per-agent timeout via asyncio.wait_for()
-- [ ] 🟠 Fix remaining v1 critical blockers
-- [ ] 🟠 Add unit tests for VisualizationAgent
-- [ ] 🟠 Add unit tests for ReportingAgent
-- [ ] 🟡 Reach 80% test coverage
+- [ ] 🔴 Wire LLMProvider into PlannerAgent for LLM-assisted routing — planner stays rule-based by design: routing is deterministic and testable
+- [x] 🔴 Enforce max_file_size_mb and max_rows in DataIngestionAgent
+- [x] 🟠 Upgrade langgraph from ^0.0.20 to latest stable
+- [x] 🟠 Add per-agent timeout via asyncio.wait_for()
+- [x] 🟠 Fix remaining v1 critical blockers
+- [x] 🟠 Add unit tests for VisualizationAgent
+- [x] 🟠 Add unit tests for ReportingAgent
+- [x] 🟡 Reach 80% test coverage
 
 ---
 
@@ -226,10 +226,10 @@ Sprint-based development
 - [x] ✅ Comprehensive unit tests (99% coverage)
 - [x] ✅ Documentation (docs/agents/BusinessDomainDetectionAgent.md)
 - [x] ✅ ADR (docs/adr/011-business-domain-detection-agent.md)
-- [ ] 🔴 LLM-based domain classification
-- [ ] 🔴 Rule-based fallback (no LLM)
-- [ ] 🔴 Confidence scoring
-- [ ] 🟠 Support 10 domains (retail, finance, HR, healthcare, marketing, SaaS, real estate, education, logistics, general)
+- [x] 🔴 LLM-based domain classification (tie-breaker when rule confidence < 0.5)
+- [x] 🔴 Rule-based fallback (no LLM)
+- [x] 🔴 Confidence scoring
+- [x] 🟠 Support 10 domains (retail, finance, HR, healthcare, marketing, SaaS, real estate, education, logistics, general)
 
 ### BusinessObjectiveDetectionAgent
 - [x] ✅ LLM-powered business question generation
@@ -241,29 +241,29 @@ Sprint-based development
 - [x] ✅ ADR (docs/adr/012-business-objective-detection-agent.md)
 
 ### KPIDiscoveryAgent
-- [ ] 🔴 Domain-specific KPI templates
-- [ ] 🔴 KPI value computation
-- [ ] 🟠 KPI trend calculation (MoM, YoY where temporal data exists)
+- [x] 🔴 Domain-specific KPI templates
+- [x] 🔴 KPI value computation
+- [x] 🟠 KPI trend calculation (MoM, YoY where temporal data exists)
 - [ ] 🟡 Benchmark context (industry averages)
 
 ### FeatureEngineeringAgent
-- [ ] 🔴 Temporal feature extraction (month, day_of_week, quarter)
-- [ ] 🟠 Ratio computation (when two related numeric columns exist)
-- [ ] 🟠 Binning (age groups, price ranges)
+- [x] 🔴 Temporal feature extraction (month, day_of_week, quarter)
+- [x] 🟠 Ratio computation (when two related numeric columns exist)
+- [x] 🟠 Binning (age groups, price ranges)
 - [ ] 🟡 Interaction features
 
 ### PlannerAgent v2
-- [ ] 🔴 Phase-based execution plan
-- [ ] 🔴 Per-agent quality gate (validate output after each agent)
-- [ ] 🔴 Loop detection (step counter + visit counter)
-- [ ] 🟠 Parallel agent dispatch (asyncio.gather for independent agents)
-- [ ] 🟠 Dynamic plan adjustment based on data characteristics
+- [x] 🔴 Phase-based execution plan
+- [x] 🔴 Per-agent quality gate (validate output after each agent)
+- [x] 🔴 Loop detection (step counter + visit counter)
+- [ ] 🟠 Parallel agent dispatch (asyncio.gather for independent agents) — agents run sequentially; phase 3/4 agents are independent and could be gathered
+- [x] 🟠 Dynamic plan adjustment based on data characteristics
 
 ### Graph v2
-- [ ] 🔴 Wire all 13 agents as nodes
-- [ ] 🔴 Conditional edges from Planner to all agents
-- [ ] 🔴 All agents return to Planner
-- [ ] 🟠 Checkpoint after each node
+- [x] 🔴 Wire all 13 agents as nodes
+- [x] 🔴 Conditional edges from Planner to all agents
+- [x] 🔴 All agents return to Planner
+- [ ] 🟠 Checkpoint after each node — GraphState.save_checkpoint exists but the graph does not call it
 - [ ] 🟡 Crash recovery from latest checkpoint
 
 ---
@@ -276,27 +276,27 @@ Sprint-based development
 **Exit Criteria:** Insights generated. Visualizations created. Report template ready.
 
 ### InsightGenerationAgent
-- [ ] 🔴 Insight category detection (top/bottom performers, trends, anomalies, risks, opportunities)
-- [ ] 🔴 LLM synthesis of business insights
-- [ ] 🟠 Insight ranking by business impact
-- [ ] 🟠 Confidence scoring
-- [ ] 🟡 Actionable recommendation generation
+- [x] 🔴 Insight category detection (top/bottom performers, trends, anomalies, risks, opportunities)
+- [x] 🔴 LLM synthesis of business insights
+- [x] 🟠 Insight ranking by business impact
+- [x] 🟠 Confidence scoring
+- [x] 🟡 Actionable recommendation generation
 
 ### VisualizationAgent v2
-- [ ] 🔴 Chart type selection logic (data pattern → chart type mapping)
-- [ ] 🔴 Dashboard layout (KPI cards + trend chart + distributions + heatmap)
-- [ ] 🔴 KPI card visualization
-- [ ] 🟠 Executive styling (colors, fonts, layout)
-- [ ] 🟡 Responsive dashboard HTML
+- [x] 🔴 Chart type selection logic (data pattern → chart type mapping)
+- [x] 🔴 Dashboard layout (KPI cards + trend chart + distributions + heatmap)
+- [x] 🔴 KPI card visualization
+- [x] 🟠 Executive styling (colors, fonts, layout)
+- [ ] 🟡 Responsive dashboard HTML — dashboard is a data payload rendered by the web app; no standalone dashboard page
 
 ### ExecutiveReportAgent
-- [ ] 🔴 Jinja2 HTML report template
-- [ ] 🔴 Executive summary section (LLM-generated narrative)
-- [ ] 🔴 All report sections (key metrics, domain, findings, risks, recommendations, etc.)
-- [ ] 🟠 PDF generation (WeasyPrint)
-- [ ] 🟠 JSON report generation
-- [ ] 🟠 Execution trace inclusion
-- [ ] 🟡 Professional formatting and styling
+- [ ] 🔴 Jinja2 HTML report template — report HTML is built in ReportingAgent; Jinja2HTMLRenderer exists but is unused
+- [x] 🔴 Executive summary section (LLM-generated narrative)
+- [x] 🔴 All report sections (key metrics, domain, findings, risks, recommendations, etc.)
+- [x] 🟠 PDF generation (ReportLab — pure Python, no system libraries)
+- [x] 🟠 JSON report generation
+- [x] 🟠 Execution trace inclusion
+- [x] 🟡 Professional formatting and styling
 
 ---
 
@@ -308,19 +308,19 @@ Sprint-based development
 **Exit Criteria:** Upload via web → real-time progress → download results.
 
 ### FastAPI Backend
-- [ ] 🔴 POST /api/analyze (file upload)
-- [ ] 🔴 GET /api/status/{execution_id}
-- [ ] 🔴 GET /api/results/{execution_id}
-- [ ] 🟠 GET /api/download/{execution_id}/{format}
-- [ ] 🟠 WebSocket /ws/{execution_id} (real-time events)
-- [ ] 🟠 CORS, error handlers, request validation
+- [x] 🔴 POST /api/analyze (file upload)
+- [x] 🔴 GET /api/status/{execution_id}
+- [x] 🔴 GET /api/results/{execution_id}
+- [x] 🟠 GET /api/download/{execution_id}/{format}
+- [x] 🟠 WebSocket /ws/{execution_id} (real-time events)
+- [x] 🟠 CORS, error handlers, request validation
 
 ### Web UI
-- [ ] 🟠 Upload page (drag-and-drop, file validation, format indicator)
-- [ ] 🔴 Graph visualization (SVG nodes, status badges, animations)
-- [ ] 🟠 Results page (report viewer, chart gallery, download buttons)
-- [ ] 🟡 Responsive design
-- [ ] 🟡 Loading states and progress indicators
+- [x] 🟠 Upload page (drag-and-drop, file validation, format indicator)
+- [x] 🔴 Graph visualization (SVG nodes, status badges, animations)
+- [x] 🟠 Results page (report viewer, chart gallery, download buttons)
+- [x] 🟡 Responsive design
+- [x] 🟡 Loading states and progress indicators
 
 ---
 
@@ -332,21 +332,21 @@ Sprint-based development
 **Exit Criteria:** v2.0.0 released with 85% coverage and complete documentation.
 
 ### Testing
-- [ ] 🔴 Reach 85% test coverage
-- [ ] 🟠 Integration test: full pipeline on 5 domain-specific datasets
-- [ ] 🟠 API endpoint tests
-- [ ] 🟠 WebSocket event tests
-- [ ] 🟡 Performance benchmarks (100K row dataset)
-- [ ] 🟡 Security tests (path traversal, injection)
+- [x] 🔴 Reach 85% test coverage
+- [ ] 🟠 Integration test: full pipeline on 5 domain-specific datasets — covered: HR, retail, numeric-only, generic; finance/healthcare samples still to add
+- [x] 🟠 API endpoint tests
+- [x] 🟠 WebSocket event tests
+- [x] 🟡 Performance benchmarks (100K row dataset)
+- [x] 🟡 Security tests (path traversal, injection)
 
 ### Documentation
-- [ ] 🟠 README v2 (installation, usage, screenshots, architecture overview)
-- [ ] 🟠 API documentation (OpenAPI + examples)
+- [x] 🟠 README v2 (installation, usage, screenshots, architecture overview)
+- [x] 🟠 API documentation (OpenAPI + examples)
 - [ ] 🟡 Migration guide (v1 → v2)
 - [ ] 🟡 Sample output gallery (5 domains)
 
 ### Release
-- [ ] 🟠 Changelog
-- [ ] 🟠 Git tag v2.0.0
-- [ ] 🟡 GitHub release with release notes
-- [ ] 🟡 Update pyproject.toml version to 2.0.0
+- [x] 🟠 Changelog
+- [ ] 🟠 Git tag v2.0.0 — maintainer action
+- [ ] 🟡 GitHub release with release notes — maintainer action (use the 2.0.0 CHANGELOG entry)
+- [x] 🟡 Update pyproject.toml version to 2.0.0

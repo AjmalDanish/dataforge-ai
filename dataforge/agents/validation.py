@@ -4,6 +4,7 @@ First line of defense. Validates the input file before any processing.
 Detects and reports data quality issues without modifying data.
 """
 
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -49,12 +50,13 @@ class DataValidationAgent(Agent):
     produced_outputs: list[str] = ["raw_data", "file_metadata", "validation_report"]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=1)
     failure_policy: FailurePolicy = FailurePolicy.HALT
-    timeout_seconds: int = 30
+    timeout_seconds: int = 120
 
-    # Validation thresholds (not Pydantic fields - just configuration)
-    max_file_size_mb: float = 100.0
-    max_rows: int = 1_000_000
-    max_columns: int = 1000
+    # Validation thresholds (not Pydantic fields - just configuration).
+    # Size/shape limits honour MAX_FILE_SIZE_MB / MAX_ROWS / MAX_COLUMNS.
+    max_file_size_mb: float = float(os.getenv("MAX_FILE_SIZE_MB", "100"))
+    max_rows: int = int(os.getenv("MAX_ROWS", "1000000"))
+    max_columns: int = int(os.getenv("MAX_COLUMNS", "1000"))
     null_threshold: float = 0.5
     duplicate_threshold: float = 0.1
     high_cardinality_threshold: int = 10000

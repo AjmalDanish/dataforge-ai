@@ -4,6 +4,7 @@ Determines the business domain represented by the dataset.
 Uses deterministic heuristics with confidence scoring.
 """
 
+import json
 import re
 from collections import defaultdict
 from datetime import datetime
@@ -19,6 +20,7 @@ from dataforge.core.models import (
     FailurePolicy,
     RetryPolicy,
 )
+from dataforge.core.llm import LLMMessage
 from dataforge.core.state import GraphState
 
 from .base import Agent, AgentDecision, AgentResult
@@ -71,7 +73,7 @@ class BusinessDomainDetectionAgent(Agent):
     ]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
     failure_policy: FailurePolicy = FailurePolicy.SKIP
-    timeout_seconds: int = 30
+    timeout_seconds: int = 120
 
     # Domain keyword dictionaries
     DOMAIN_KEYWORDS = {
@@ -173,6 +175,8 @@ class BusinessDomainDetectionAgent(Agent):
 
     # Confidence thresholds
     MIN_CONFIDENCE_THRESHOLD: float = 0.3
+    LLM_ASSIST_THRESHOLD: float = 0.5
+    LLM_CONFIDENCE: float = 0.7
     HIGH_CONFIDENCE_THRESHOLD: float = 0.7
 
     def __init__(
@@ -269,6 +273,16 @@ class BusinessDomainDetectionAgent(Agent):
             selected_domain = max(domain_confidences.items(), key=lambda x: x[1])[0]
             selected_confidence = domain_confidences[selected_domain]
 
+            # Low rule-based confidence: let the LLM (when configured) break the tie.
+            detection_method = "rules"
+            if self.llm is not None and selected_confidence < self.LLM_ASSIST_THRESHOLD:
+                llm_domain = await self._llm_classify(cleaned_data)
+                if llm_domain is not None:
+                    selected_domain = llm_domain
+                    selected_confidence = max(selected_confidence, self.LLM_CONFIDENCE)
+                    domain_confidences[selected_domain] = selected_confidence
+                    detection_method = "llm"
+
             # Fallback to GENERAL if confidence is too low
             if selected_confidence < self.MIN_CONFIDENCE_THRESHOLD:
                 selected_domain = BusinessDomain.GENERAL
@@ -322,6 +336,7 @@ class BusinessDomainDetectionAgent(Agent):
                     "domain_keywords_detected": keywords_detected,
                     "domain_features_detected": features_detected,
                     "domain_reasoning": reasoning,
+                    "domain_detection_method": detection_method,
                 },
             )
 
@@ -763,3 +778,28 @@ class BusinessDomainDetectionAgent(Agent):
                 reasoning += f"{i}. {item}\n"
 
         return reasoning
+
+    async def _llm_classify(self, df: pd.DataFrame) -> BusinessDomain | None:
+        """Classify the dataset's domain with the LLM; None when unavailable."""
+        options = ", ".join(d.value for d in BusinessDomain)
+        sample = df.head(3).astype(str).to_dict(orient="records")
+        prompt = "\n".join(
+            [
+                f"Columns: {list(map(str, df.columns))[:60]}",
+                f"Sample rows: {json.dumps(sample, default=str)[:3000]}",
+                "",
+                f"Which business domain does this dataset belong to? Options: {options}. "
+                "Reply with exactly one option and nothing else.",
+            ]
+        )
+        try:
+            response = await self.llm.generate_with_retry(
+                [LLMMessage(role="user", content=prompt)], max_retries=1
+            )
+        except Exception:
+            return None
+        answer = response.content.strip().strip(".").lower().replace(" ", "_")
+        try:
+            return BusinessDomain(answer)
+        except ValueError:
+            return None

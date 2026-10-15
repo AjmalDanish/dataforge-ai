@@ -5,6 +5,33 @@ All notable changes to DataForge AI project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-10-15
+
+### Added
+- **v2 pipeline**: 13 agents across 7 phases — validation, cleaning, schema, business domain, business objectives, profiling, feature engineering, KPI discovery, statistics, insight generation, visualization, evaluation, reporting.
+- **Planner v2**: precondition-based scheduling, retry-then-skip quality gate, evaluator remediation loop, step budget with best-effort reporting, phase tracking.
+- **LLM integration** (optional): executive narrative + recommendations, domain tie-breaking, objective generation; Anthropic (`claude-opus-5-5`, server-side refusal fallback) or OpenAI, selected from the environment.
+- **Executive PDF report** (ReportLab) alongside HTML and JSON.
+- **FastAPI backend**: streaming uploads, per-agent WebSocket events, report asset serving, PDF download, persisted run metadata, optional admin token for deletes.
+- **Next.js frontend**: live 7-phase agent graph, activity log, narrative, KPI cards, insights, chart viewer, one-click samples.
+- `run_workflow()` helper shared by the CLI and API; Dockerfile; GitHub Actions CI (Python 3.11–3.13, frontend build, Docker smoke test).
+
+### Fixed
+- CLI, `run.py` and tests used `recursion_limit=25`, so the 24+-step pipeline always failed with `GraphRecursionError`.
+- Report HTML embedded column names and values unescaped (stored XSS via a crafted file).
+- Text columns were converted to dates when a single value parsed as a date, wiping the other values.
+- KPIs fell back to the first numeric column when no column matched (e.g. "Average Salary" computed over `id`); revenue KPIs were computed from `price`.
+- Identifier columns were profiled, correlated and charted.
+- Agent timeouts were declared but never enforced; an agent failing input validation was rescheduled indefinitely.
+- Each chart embedded its own copy of plotly.js (~5 MB per chart, ~100 MB per run); scatter trend lines required the missing `statsmodels`.
+- Statistics ran on raw instead of cleaned data; `BusinessDomain` serialized as `BusinessDomain.HR`.
+- The API ran analyses on the event loop, freezing status polling and WebSockets during a run.
+
+### Changed
+- Anthropic provider updated for current models (no `temperature`, text read from text blocks only, refusals surfaced as errors).
+- Removed the v1 linear routing and `execute.py`; `python -m dataforge analyze` and `run.py` are the entry points.
+- Dependencies trimmed to what the code imports; `requirements*.txt` added.
+
 ## [1.0.0] - 2024-07-31
 
 ### Added

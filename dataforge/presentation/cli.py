@@ -9,221 +9,145 @@ from typing import Any
 
 import click
 
-from dataforge.core.llm import LLMConfig, LLMProviderFactory
+from dataforge import __version__
+from dataforge.core.llm import LLMProviderFactory
 from dataforge.core.logger import StructuredLogger
 from dataforge.core.state import GraphState
+from dataforge.infrastructure.llm_providers import llm_from_env
+from dataforge.shared.config import get_output_dir
 
-# Import providers to register them
-from dataforge.infrastructure.llm_providers import AnthropicProvider, OpenAIProvider
-from dataforge.shared.config import get_output_dir, settings
-from dataforge.shared.errors import ConfigurationError, DataForgeError
-
-__all__ = ["main", "cli"]
+__all__ = ["main", "cli", "run_cli_analysis"]
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="dataforge")
+@click.version_option(version=__version__, prog_name="dataforge")
 def cli() -> None:
-    """DataForge AI - Autonomous Multi-Agent Data Science Platform."""
-    pass
+    """DataForge AI - Autonomous Business Intelligence Engine."""
 
 
-async def _execute_workflow(
-    state: GraphState,
-    logger: StructuredLogger,
-    verbose: bool,
-) -> None:
-    """Execute the workflow asynchronously.
+async def _print_event(event: dict[str, Any]) -> None:
+    mark = "OK " if event["success"] else "ERR"
+    click.echo(
+        f"  [{mark}] phase {event['phase']}  {event['agent']:<32} "
+        f"{event['duration_s']:>6.2f}s  {str(event['message'])[:90]}"
+    )
 
-    Args:
-        state: The graph state.
-        logger: The structured logger.
-        verbose: Whether to enable verbose output.
-    """
-    from dataforge.graph.workflow import create_graph
 
-    workflow = create_graph()
-    start_time = time.time()
+async def run_cli_analysis(
+    dataset_path: Path,
+    output_dir: Path,
+    use_llm: bool = True,
+    query: str | None = None,
+    verbose: bool = True,
+) -> int:
+    """Run one analysis and print a summary. Returns a process exit code."""
+    from dataforge.graph.workflow import run_workflow
 
-    logger.info("Starting workflow execution", agent="CLI")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    state = GraphState(
+        input_dataset_path=str(dataset_path),
+        input_query=query,
+        output_dir=str(output_dir),
+    )
+    logger = StructuredLogger(state.execution_id, str(output_dir))
+    llm = llm_from_env() if use_llm else None
 
-    # Execute workflow
-    final_state = await workflow.ainvoke(state, {"recursion_limit": 25})
+    click.echo(f"DataForge AI v{__version__}")
+    click.echo(f"Dataset: {dataset_path}")
+    click.echo(f"Output:  {output_dir}")
+    click.echo(
+        f"LLM:     {llm.provider_name} / {llm.config.model}"
+        if llm
+        else "LLM:     off (rule-based; set ANTHROPIC_API_KEY or OPENAI_API_KEY to enable)"
+    )
+    click.echo("")
 
-    duration = time.time() - start_time
+    start = time.time()
+    final = await run_workflow(
+        state, llm_provider=llm, on_event=_print_event if verbose else None, logger=logger
+    )
+    duration = time.time() - start
 
-    # Check for successful completion
-    steps_completed = final_state.get("steps_completed", [])
-    if "ReportingAgent" in steps_completed:
-        click.echo("✓ Dataset Loaded")
-        click.echo("✓ Profiling Complete")
-        click.echo("✓ Statistics Complete")
-        click.echo("✓ Visualizations Generated")
-        click.echo("✓ Report Generated")
-        click.echo("✓ Workflow Finished")
-        click.echo(f"✓ Execution duration: {duration:.2f}s")
-        click.echo("")
-        click.echo(f"📊 Analysis complete! Report saved to: {state.output_dir}/report.html")
-        # Export logs
-        log_file = logger.export_logs()
-        logger.info("Logs exported", log_file=str(log_file))
-        click.echo(f"✓ Logs saved to: {log_file}")
-        sys.exit(0)
+    report = final.get("report") or {}
+    click.echo("")
+    if "ReportingAgent" in final.steps_completed and report.get("html_path"):
+        domain = final.get("business_domain") or "general"
+        click.echo(f"Analysis complete in {duration:.1f}s  (domain: {domain})")
+        click.echo(f"  KPIs:           {len(final.get('discovered_kpis') or [])}")
+        click.echo(f"  Insights:       {len(final.get('business_insights') or [])}")
+        click.echo(f"  Visualizations: {len(final.get('visualizations') or [])}")
+        click.echo(f"  HTML report:    {report['html_path']}")
+        click.echo(f"  JSON report:    {report['json_path']}")
+        if report.get("pdf_path"):
+            click.echo(f"  PDF report:     {report['pdf_path']}")
+        if final.steps_skipped:
+            click.echo(f"  Skipped:        {', '.join(final.steps_skipped)}")
+        click.echo(f"  Logs:           {logger.export_logs()}")
+        return 0
 
-    else:
-        # Workflow didn't complete
-        click.echo("⚠ Workflow did not complete successfully")
-        click.echo(f"Completed steps: {steps_completed}")
-
-        # Check for errors in agent history
-        errors = []
-        for entry in final_state.get("agent_history", []):
-            if not entry.get("result", {}).get("success", False):
-                errors.append(
-                    (
-                        entry["agent"],
-                        entry.get("result", {}).get("message", "Unknown error"),
-                    )
-                )
-
-        if errors:
-            click.echo("\nErrors encountered:")
-            for agent, message in errors:
-                click.echo(f"  - {agent}: {message}")
-
-        sys.exit(1)
+    click.echo("Analysis did not complete.", err=True)
+    for entry in final.agent_history:
+        result = (entry.metadata or {}).get("result", {})
+        if not result.get("success", True):
+            click.echo(f"  - {entry.agent_name}: {entry.message or result.get('error')}", err=True)
+    return 1
 
 
 @cli.command()
-@click.argument(
-    "dataset_path",
-    type=click.Path(exists=True, path_type=Path),
-    required=True,
-)
+@click.argument("dataset_path", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--output",
     "-o",
     type=click.Path(path_type=Path),
     default=None,
-    help="output directory (default: ./output/<dataset_name>)",
+    help="Output directory (default: ./output/<dataset_name>)",
 )
 @click.option(
     "--provider",
     "-p",
-    type=click.Choice(["openai", "anthropic"]),
+    type=click.Choice(["anthropic", "openai"]),
     default=None,
-    help=f"LLM provider (default: {settings.llm_provider})",
+    help="LLM provider (default: first one with an API key in the environment)",
 )
-@click.option(
-    "--model",
-    "-m",
-    type=str,
-    default=None,
-    help=f"LLM model (default: {settings.llm_model})",
-)
-@click.option(
-    "--query",
-    "-q",
-    type=str,
-    default=None,
-    help="Optional query for targeted analysis",
-)
-@click.option(
-    "--verbose",
-    "-v",
-    is_flag=True,
-    help="Enable verbose output",
-)
+@click.option("--model", "-m", type=str, default=None, help="LLM model override")
+@click.option("--no-llm", is_flag=True, help="Run the deterministic rule-based path only")
+@click.option("--query", "-q", type=str, default=None, help="Optional business question")
+@click.option("--quiet", is_flag=True, help="Hide per-agent progress")
 def analyze(
     dataset_path: Path,
     output: Path | None,
     provider: str | None,
     model: str | None,
+    no_llm: bool,
     query: str | None,
-    verbose: bool,
+    quiet: bool,
 ) -> None:
     """Analyze a dataset autonomously.
 
-    DATASET_PATH: Path to the dataset file (CSV or Parquet).
+    DATASET_PATH: CSV, Excel, Parquet or JSON file.
     """
+    if provider:
+        os.environ["LLM_PROVIDER"] = provider
+    if model:
+        os.environ["LLM_MODEL"] = model
+    output_dir = output or get_output_dir(str(dataset_path))
     try:
-        # Determine output directory
-        if output is None:
-            output_dir = get_output_dir(str(dataset_path))
-        else:
-            output_dir = output
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create initial state
-        state = GraphState(
-            input_dataset_path=str(dataset_path),
-            input_query=query,
-            output_dir=str(output_dir),
+        code = asyncio.run(
+            run_cli_analysis(dataset_path, output_dir, not no_llm, query, not quiet)
         )
-
-        # Initialize logger
-        logger = StructuredLogger(state.execution_id, str(output_dir))
-
-        logger.info("Starting DataForge analysis", dataset=str(dataset_path))
-
-        # Configure LLM (minimal config for graph - agents handle their own LLM calls)
-        llm_config = LLMConfig(
-            provider=provider or "openai",
-            model=model or "gpt-4",
-            api_key=_get_api_key(provider or "openai"),
-            temperature=settings.llm_temperature,
-            max_tokens=settings.llm_max_tokens,
-            timeout=settings.llm_timeout,
-        )
-
-        logger.info(
-            "LLM configured",
-            provider=llm_config.provider,
-            model=llm_config.model,
-        )
-
-        # Create LLM provider
-        llm_provider = LLMProviderFactory.create(llm_config)
-
-        logger.info("LLM provider created", provider=llm_provider.provider_name)
-
-        try:
-            asyncio.run(_execute_workflow(state, logger, verbose))
-
-        except Exception as e:
-            logger.error(
-                "Workflow execution failed",
-                error_type=type(e).__name__,
-                error_message=str(e),
-            )
-            click.echo(f"Workflow execution failed: {e}", err=True)
-            if verbose:
-                import traceback
-
-                traceback.print_exc()
-
-            sys.exit(1)
-
-    except ConfigurationError as e:
-        click.echo(f"Configuration error: {e}", err=True)
-        sys.exit(1)
-    except DataForgeError as e:
-        click.echo(f"Error: {e}", err=True)
-        sys.exit(1)
+    except KeyboardInterrupt:
+        click.echo("Interrupted.", err=True)
+        code = 130
     except Exception as e:
-        click.echo(f"Unexpected error: {e}", err=True)
-        if verbose:
-            import traceback
-
-            traceback.print_exc()
-
-        sys.exit(1)
+        click.echo(f"Workflow execution failed: {type(e).__name__}: {e}", err=True)
+        code = 1
+    sys.exit(code)
 
 
 @cli.command()
 def version() -> None:
     """Show version information."""
-    click.echo(f"DataForge AI v{settings.app_version}")
+    click.echo(f"DataForge AI v{__version__}")
     click.echo(f"Python {sys.version}")
 
 
@@ -231,24 +155,8 @@ def version() -> None:
 def providers() -> None:
     """List available LLM providers."""
     click.echo("Available LLM providers:")
-    for provider in LLMProviderFactory.list_providers():
-        click.echo(f"  - {provider}")
-
-
-def _get_api_key(provider: str) -> str | None:
-    """Get API key for provider from environment or settings.
-
-    Args:
-        provider: Provider name.
-
-    Returns:
-        API key or None.
-    """
-    if provider == "openai":
-        return os.getenv("OPENAI_API_KEY") or settings.openai_api_key
-    elif provider == "anthropic":
-        return os.getenv("ANTHROPIC_API_KEY") or settings.anthropic_api_key
-    return None
+    for name in LLMProviderFactory.list_providers():
+        click.echo(f"  - {name}")
 
 
 def main() -> None:

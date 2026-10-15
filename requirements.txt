@@ -1,0 +1,17 @@
+# DataForge AI engine — runtime dependencies (tested on Python 3.11–3.14)
+pandas>=2.1
+numpy>=1.26
+scipy>=1.11
+pyarrow>=14
+openpyxl>=3.1
+chardet>=5.0
+plotly>=5.18
+jinja2>=3.1
+reportlab>=4.0
+langgraph>=1.0
+pydantic>=2.5
+click>=8.1
+python-dotenv>=1.0
+# LLM providers (optional at runtime: the engine runs rule-based without a key)
+anthropic>=1.0
+openai>=1.0

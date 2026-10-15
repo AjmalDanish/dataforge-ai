@@ -16,7 +16,7 @@ class Settings(BaseModel):
 
     # Application
     app_name: str = "DataForge AI"
-    app_version: str = "0.1.0"
+    app_version: str = "2.0.0"
     debug: bool = False
 
     # LLM Configuration

@@ -1,23 +1,15 @@
-"""End-to-end integration tests for the complete workflow."""
+"""End-to-end integration tests for the complete v2 workflow."""
 
-import os
+import json
 from pathlib import Path
 
 import pytest
 
-from dataforge.graph.workflow import create_graph
+from dataforge.core.llm import LLMConfig, LLMMessage, LLMProvider, LLMResponse
+from dataforge.core.state import GraphState
+from dataforge.graph.workflow import run_workflow
 
-
-@pytest.mark.integration
-class TestEndToEndWorkflow:
-    """End-to-end tests for the complete analysis workflow."""
-
-    @pytest.mark.asyncio
-    async def test_complete_workflow_with_employee_data(self, tmp_path):
-        """Test complete workflow with employee dataset."""
-        # Create test dataset
-        dataset_path = tmp_path / "employees.csv"
-        test_data = """id,name,age,department,salary,years_of_service,performance_score,remote_worker
+EMPLOYEES = """id,name,age,department,salary,years_of_service,performance_score,remote_worker
 1,Alice Johnson,28,Engineering,75000.0,2,8.5,True
 2,Bob Smith,35,Sales,65000.0,5,7.2,False
 3,Charlie Brown,42,Engineering,95000.0,10,9.1,True
@@ -28,320 +20,200 @@ class TestEndToEndWorkflow:
 8,Henry Wilson,45,Sales,90000.0,15,9.3,False
 9,Iris Chen,29,Engineering,78000.0,3,8.6,True
 10,Jack Brown,38,Marketing,80000.0,7,8.0,False
+11,Kara Wu,36,Engineering,88000.0,9,8.9,True
+12,Liam Ford,27,Sales,58000.0,1,6.9,False
 """
-        dataset_path.write_text(test_data)
 
-        # Create output directory
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
+PRODUCTS = """product_id,product_name,category,price,stock_quantity,sold_quantity,customer_rating,reviews_count
+1,Laptop Pro,Electronics,1299.99,45,120,4.5,234
+2,Wireless Mouse,Electronics,29.99,200,450,4.2,567
+3,Office Chair,Furniture,249.99,30,85,4.7,123
+4,Standing Desk,Furniture,599.99,15,42,4.6,89
+5,USB-C Hub,Electronics,49.99,150,320,4.1,412
+6,Bookshelf,Furniture,129.99,25,60,4.3,76
+7,Monitor 27in,Electronics,349.99,60,140,4.6,298
+8,Desk Lamp,Furniture,39.99,90,210,4.0,154
+"""
 
-        # Create workflow
-        workflow = create_graph()
 
-        # Initialize state
-        from dataforge.core.logger import StructuredLogger
-        from dataforge.core.state import GraphState
+class FakeLLM(LLMProvider):
+    """Deterministic provider: classifies domains and writes narratives."""
 
-        logger = StructuredLogger("integration_test", str(output_dir))
-        initial_state = GraphState(input_dataset_path=str(dataset_path))
+    def __init__(self) -> None:
+        super().__init__(LLMConfig(provider="fake", model="fake-1", api_key="x"))
+        self.calls: list[list[LLMMessage]] = []
 
-        # Run workflow
-        try:
-            result_state = await workflow.ainvoke(initial_state, {"recursion_limit": 25})
-        except Exception as e:
-            pytest.fail(f"Workflow execution failed: {e}")
+    async def generate(self, messages, config=None) -> LLMResponse:
+        self.calls.append(messages)
+        prompt = messages[-1].content
+        if "Which business domain" in prompt:
+            content = "retail"
+        elif messages[0].role == "system" and "executive" in messages[0].content:
+            content = json.dumps(
+                {
+                    "narrative": "Revenue is concentrated in electronics.",
+                    "recommendations": ["Restock top sellers", "Review furniture pricing"],
+                }
+            )
+        else:
+            content = "{}"
+        return LLMResponse(content=content, model="fake-1", provider="fake")
 
-        # Verify workflow completed successfully
-        assert result_state is not None
-        assert result_state.get("steps_completed") is not None
-        assert len(result_state.get("steps_completed", [])) > 0
 
-        # Verify raw data was loaded
-        assert result_state.get("data", {}).get("raw_data") is not None
-        raw_data = result_state.get("data", {}).get("raw_data")
-        assert len(raw_data) == 10
-        assert len(raw_data.columns) == 8
+async def _run(tmp_path: Path, csv: str, name: str = "data.csv", **kwargs) -> GraphState:
+    dataset = tmp_path / name
+    dataset.write_text(csv, encoding="utf-8")
+    out = tmp_path / "output"
+    state = GraphState(input_dataset_path=str(dataset), output_dir=str(out))
+    return await run_workflow(state, **kwargs)
 
-        # Verify profile was generated
-        profile = result_state.get("data", {}).get("profile")
-        assert profile is not None
-        assert profile["n_rows"] == 10
-        assert profile["n_columns"] == 8
-        assert len(profile["numeric_columns"]) > 0
 
-        # Verify statistics were computed (if numeric columns exist)
-        # Note: Statistics may not be present if there was an error, but we still verify workflow completion
-        statistics = result_state.get("data", {}).get("statistics")
-        if profile["has_numeric_columns"] and statistics is not None:
-            assert "descriptive_stats" in statistics
-            assert len(statistics["descriptive_stats"]) > 0
+@pytest.mark.integration
+class TestEndToEndWorkflow:
+    """Full pipeline runs on small in-memory datasets."""
 
-        # Verify visualizations were created
-        visualizations = result_state.get("data", {}).get("visualizations", [])
-        assert len(visualizations) > 0
+    @pytest.mark.asyncio
+    async def test_complete_workflow_with_employee_data(self, tmp_path):
+        events: list[dict] = []
 
-        # Verify insights were generated
-        insights = result_state.get("data", {}).get("insights", [])
-        assert len(insights) >= 2  # At least 2 insights from profiling
+        async def collect(event: dict) -> None:
+            events.append(event)
 
-        # Verify report was generated
-        report = result_state.get("data", {}).get("report")
-        assert report is not None
-        assert "html_path" in report
-        assert "json_path" in report
+        final = await _run(tmp_path, EMPLOYEES, on_event=collect)
 
-        # Check that report files exist
-        html_report_path = Path(report["html_path"])
-        json_report_path = Path(report["json_path"])
-        assert html_report_path.exists()
-        assert json_report_path.exists()
+        steps = final.steps_completed
+        for agent in (
+            "DataValidationAgent",
+            "DataCleaningAgent",
+            "SchemaDetectionAgent",
+            "BusinessDomainDetectionAgent",
+            "DataProfilingAgent",
+            "KPIDiscoveryAgent",
+            "StatisticalAnalysisAgent",
+            "InsightGenerationAgent",
+            "VisualizationAgent",
+            "EvaluatorAgent",
+            "ReportingAgent",
+        ):
+            assert agent in steps, f"{agent} did not run"
+        assert [s for s in steps if s != "PlannerAgent"][-1] == "ReportingAgent"
+        assert final.steps_skipped == []
+        assert final.current_phase == 7
+        assert final.end_time is not None
 
-        # Verify HTML report contains expected content
-        html_content = html_report_path.read_text(encoding="utf-8")
-        assert "DataForge AI Analysis Report" in html_content
-        assert "Data Profile" in html_content
-        assert "Key Insights" in html_content
+        cleaned = final.get("cleaned_data")
+        assert len(cleaned) == 12
+        assert final.get("business_domain") == "hr"
+        assert final.get("profile")["n_rows"] == 12
+        assert len(final.get("statistics")["descriptive_stats"]) > 0
+        assert len(final.get("discovered_kpis")) > 0
+        assert len(final.get("business_insights")) > 0
+        assert final.get("evaluation")["passed"] is True
 
-        # Verify visualizations directory was created
-        viz_dir = output_dir / "visualizations"
-        if viz_dir.exists():
-            viz_files = list(viz_dir.glob("*.html"))
-            assert len(viz_files) > 0
+        report = final.get("report")
+        html = Path(report["html_path"]).read_text(encoding="utf-8")
+        assert "Executive Summary" in html
+        assert json.loads(Path(report["json_path"]).read_text(encoding="utf-8"))
+        assert report["pdf_available"] is True
+        assert Path(report["pdf_path"]).read_bytes()[:4] == b"%PDF"
+
+        viz_dir = tmp_path / "output" / "visualizations"
+        charts = list(viz_dir.glob("*.html"))
+        assert charts
+        # Charts share one plotly bundle instead of embedding ~5 MB each.
+        assert (viz_dir / "plotly.min.js").exists()
+        assert all(c.stat().st_size < 500_000 for c in charts)
+
+        # One event per agent step, in pipeline order, no planner noise.
+        assert [e["agent"] for e in events] == [s for s in steps if s != "PlannerAgent"]
+        assert all(e["success"] for e in events)
+        phases = [e["phase"] for e in events]
+        assert phases == sorted(phases)
 
     @pytest.mark.asyncio
     async def test_complete_workflow_with_product_data(self, tmp_path):
-        """Test complete workflow with product dataset."""
-        # Create test dataset
-        dataset_path = tmp_path / "products.csv"
-        test_data = """product_id,product_name,category,price,stock_quantity,sold_quantity,customer_rating,reviews_count
-101,Smartphone Pro,Electronics,699.99,150,245,4.5,120
-102,Laptop Ultra,Electronics,1299.99,80,156,4.7,85
-103,Wireless Earbuds,Electronics,149.99,500,890,4.3,320
-104,Coffee Maker,Home,79.99,200,450,4.2,180
-105,Desk Chair,Furniture,249.99,60,95,4.4,65
-"""
-        dataset_path.write_text(test_data)
-
-        # Create output directory
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
-
-        # Create workflow
-        workflow = create_graph()
-
-        # Initialize state
-        from dataforge.core.logger import StructuredLogger
-        from dataforge.core.state import GraphState
-
-        logger = StructuredLogger("integration_test", str(output_dir))
-        initial_state = GraphState(input_dataset_path=str(dataset_path))
-
-        # Run workflow
-        try:
-            result_state = await workflow.ainvoke(initial_state, {"recursion_limit": 25})
-        except Exception as e:
-            pytest.fail(f"Workflow execution failed: {e}")
-
-        # Verify basic workflow completion
-        assert result_state is not None
-        assert result_state.get("data", {}).get("raw_data") is not None
-        assert result_state.get("data", {}).get("profile") is not None
-        assert result_state.get("data", {}).get("insights") is not None
-
-        # Verify report was generated
-        report = result_state.get("data", {}).get("report")
-        assert report is not None
-        assert Path(report["html_path"]).exists()
+        final = await _run(tmp_path, PRODUCTS)
+        assert "ReportingAgent" in final.steps_completed
+        assert final.get("business_domain") == "retail"
+        assert Path(final.get("report")["html_path"]).exists()
 
     @pytest.mark.asyncio
     async def test_workflow_with_missing_values(self, tmp_path):
-        """Test workflow handles missing values correctly."""
-        # Create dataset with missing values
-        dataset_path = tmp_path / "missing_values.csv"
-        test_data = """id,name,age,salary
-1,Alice,25,50000
-2,Bob,,60000
-3,Charlie,35,
-4,Diana,28,55000
-5,,30,58000
-"""
-        dataset_path.write_text(test_data)
-
-        # Create output directory
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
-
-        # Create workflow
-        workflow = create_graph()
-
-        # Initialize state
-        from dataforge.core.logger import StructuredLogger
-        from dataforge.core.state import GraphState
-
-        logger = StructuredLogger("integration_test", str(output_dir))
-        initial_state = GraphState(input_dataset_path=str(dataset_path))
-
-        # Run workflow
-        try:
-            result_state = await workflow.ainvoke(initial_state, {"recursion_limit": 25})
-        except Exception as e:
-            pytest.fail(f"Workflow execution failed with missing values: {e}")
-
-        # Verify workflow completed despite missing values
-        assert result_state is not None
-        assert result_state.get("data", {}).get("raw_data") is not None
-        assert result_state.get("data", {}).get("profile") is not None
-
-        # Verify missing values were detected
-        profile = result_state.get("data", {}).get("profile")
-        assert profile is not None
-        assert profile["overall_missing_ratio"] > 0
-
-        # Verify insights about data quality
-        insights = result_state.get("data", {}).get("insights", [])
-        data_quality_insights = [i for i in insights if "missing" in i.get("message", "").lower()]
-        # Note: data quality insights may be generated in profiling
-        # We just verify the workflow completed with missing values handled
+        csv = "id,name,age,salary\n" + "\n".join(
+            f"{i},Person {i},{'' if i % 4 == 0 else 20 + i},{'' if i % 5 == 0 else 1000 * i}"
+            for i in range(1, 21)
+        )
+        final = await _run(tmp_path, csv)
+        assert "ReportingAgent" in final.steps_completed
+        assert final.get("raw_data").isna().sum().sum() > 0
+        assert final.get("cleaning_report") is not None
 
     @pytest.mark.asyncio
     async def test_workflow_with_all_numeric_data(self, tmp_path):
-        """Test workflow with purely numeric dataset."""
-        # Create dataset with only numeric columns
-        dataset_path = tmp_path / "numeric.csv"
-        test_data = """x,y,z
-1.2,3.4,5.6
-2.3,4.5,6.7
-3.4,5.6,7.8
-4.5,6.7,8.9
-5.6,7.8,9.0
-"""
-        dataset_path.write_text(test_data)
-
-        # Create output directory
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
-
-        # Create workflow
-        workflow = create_graph()
-
-        # Initialize state
-        from dataforge.core.logger import StructuredLogger
-        from dataforge.core.state import GraphState
-
-        logger = StructuredLogger("integration_test", str(output_dir))
-        initial_state = GraphState(input_dataset_path=str(dataset_path))
-
-        # Run workflow
-        try:
-            result_state = await workflow.ainvoke(initial_state, {"recursion_limit": 25})
-        except Exception as e:
-            pytest.fail(f"Workflow execution failed with numeric data: {e}")
-
-        # Verify workflow completed
-        assert result_state is not None
-        assert result_state.get("data", {}).get("raw_data") is not None
-
-        # Verify all columns detected as numeric
-        profile = result_state.get("data", {}).get("profile")
-        assert profile is not None
+        csv = "x,y,z\n" + "\n".join(f"{i},{i * 2 + 1},{(i * 7) % 11}" for i in range(1, 25))
+        final = await _run(tmp_path, csv)
+        profile = final.get("profile")
         assert profile["has_numeric_columns"] is True
         assert profile["has_categorical_columns"] is False
-
-        # Verify statistics were computed
-        statistics = result_state.get("data", {}).get("statistics")
-        assert statistics is not None
-        assert "descriptive_stats" in statistics
-        assert len(statistics["descriptive_stats"]) == 3
+        assert "descriptive_stats" in final.get("statistics")
+        assert "ReportingAgent" in final.steps_completed
 
     @pytest.mark.asyncio
-    async def test_workflow_generates_all_expected_outputs(self, tmp_path):
-        """Test that workflow generates all expected output artifacts."""
-        # Create test dataset
-        dataset_path = tmp_path / "test.csv"
-        test_data = """id,category,value,score
-1,A,10,85
-2,B,20,90
-3,A,15,88
-4,B,25,92
-5,A,12,87
-6,B,18,91
-"""
-        dataset_path.write_text(test_data)
+    async def test_llm_provider_drives_domain_and_narrative(self, tmp_path):
+        llm = FakeLLM()
+        csv = "a,b,c\n" + "\n".join(f"{i},{i * 3},{i % 4}" for i in range(1, 30))
+        final = await _run(tmp_path, csv, llm_provider=llm)
 
-        # Create output directory
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
-
-        # Create workflow
-        workflow = create_graph()
-
-        # Initialize state
-        from dataforge.core.logger import StructuredLogger
-        from dataforge.core.state import GraphState
-
-        logger = StructuredLogger("integration_test", str(output_dir))
-        initial_state = GraphState(input_dataset_path=str(dataset_path))
-
-        # Run workflow
-        try:
-            result_state = await workflow.ainvoke(initial_state, {"recursion_limit": 25})
-        except Exception as e:
-            pytest.fail(f"Workflow execution failed: {e}")
-
-        # Verify all expected outputs
-        # 1. Raw data
-        assert result_state.get("data", {}).get("raw_data") is not None
-
-        # 2. Profile
-        assert result_state.get("data", {}).get("profile") is not None
-        profile = result_state.get("data", {}).get("profile")
-        assert "n_rows" in profile
-        assert "n_columns" in profile
-        assert "columns" in profile
-
-        # 3. Statistics (for numeric columns)
-        if profile.get("has_numeric_columns"):
-            assert result_state.get("data", {}).get("statistics") is not None
-            statistics = result_state.get("data", {}).get("statistics")
-            assert "descriptive_stats" in statistics
-            assert "correlations" in statistics
-
-        # 4. Visualizations
-        visualizations = result_state.get("data", {}).get("visualizations", [])
-        assert len(visualizations) > 0
-        for viz in visualizations:
-            assert "type" in viz
-            assert "title" in viz
-            assert "file_path" in viz
-
-        # 5. Insights
-        insights = result_state.get("data", {}).get("insights", [])
-        assert len(insights) >= 2  # At least 2 insights from profiling
-        for insight in insights:
-            assert "type" in insight
-            assert "message" in insight
-
-        # 6. Report files
-        report = result_state.get("data", {}).get("report")
-        assert report is not None
-        html_path = Path(report["html_path"])
-        json_path = Path(report["json_path"])
-        assert html_path.exists()
-        assert json_path.exists()
-
-        # 7. Execution logs
-        logs = result_state.get("logs", [])
-        assert len(logs) > 0
-
-        # 8. Completed steps tracking
-        steps_completed = result_state.get("steps_completed", [])
-        assert len(steps_completed) > 0
-        # Should include at least: DataIngestionAgent, DataProfilingAgent, EvaluatorAgent, ReportingAgent
-        expected_agents = [
-            "DataIngestionAgent",
-            "DataProfilingAgent",
-            "EvaluatorAgent",
-            "ReportingAgent",
+        # Rule-based detection has no signal here, so the LLM breaks the tie.
+        assert final.get("business_domain") == "retail"
+        assert final.get("domain_detection_method") == "llm"
+        assert final.get("executive_narrative")["recommendations"] == [
+            "Restock top sellers",
+            "Review furniture pricing",
         ]
-        for agent in expected_agents:
-            assert agent in steps_completed, f"Expected {agent} in completed steps"
+        html = Path(final.get("report")["html_path"]).read_text(encoding="utf-8")
+        assert "Revenue is concentrated in electronics." in html
+        assert "Recommended Actions" in html
+
+    @pytest.mark.asyncio
+    async def test_report_escapes_hostile_column_names(self, tmp_path):
+        csv = '"<script>alert(1)</script>",amount\n' + "\n".join(
+            f"x{i},{i * 10}" for i in range(1, 15)
+        )
+        final = await _run(tmp_path, csv)
+        html = Path(final.get("report")["html_path"]).read_text(encoding="utf-8")
+        assert "<script>alert(1)</script>" not in html
+        assert "&lt;script&gt;" in html
+
+    @pytest.mark.asyncio
+    async def test_unreadable_file_ends_without_report(self, tmp_path):
+        final = await _run(tmp_path, "", name="empty.csv")
+        assert "ReportingAgent" not in final.steps_completed
+        assert final.get("cleaned_data") is None
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fmt", ["xlsx", "json", "parquet"])
+async def test_non_csv_formats(tmp_path, fmt):
+    import io
+
+    import pandas as pd
+
+    frame = pd.read_csv(io.StringIO(PRODUCTS))
+    path = tmp_path / f"products.{fmt}"
+    {"xlsx": lambda: frame.to_excel(path, index=False),
+     "json": lambda: frame.to_json(path, orient="records"),
+     "parquet": lambda: frame.to_parquet(path)}[fmt]()
+
+    final = await run_workflow(GraphState(input_dataset_path=str(path), output_dir=str(tmp_path / "o")))
+    assert "ReportingAgent" in final.steps_completed
+    assert len(final.get("cleaned_data")) == 8
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_text_column_with_one_date_is_not_destroyed(tmp_path):
+    csv = "note,amount\n2021-01-05,10\n" + "\n".join(f"free text {i},{i}" for i in range(20))
+    final = await _run(tmp_path, csv)
+    assert final.get("cleaned_data")["note"].notna().all()

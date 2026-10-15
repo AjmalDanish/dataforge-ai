@@ -222,7 +222,7 @@ class TestBusinessObjectiveDetectionAgentInit:
 
     def test_agent_timeout(self, agent):
         """Test agent has correct timeout."""
-        assert agent.timeout_seconds == 30
+        assert agent.timeout_seconds == 120
 
     def test_domain_templates_exist(self, agent):
         """Test domain templates exist for all domains."""

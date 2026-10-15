@@ -1,5 +1,7 @@
 """Base agent interface and utilities."""
 
+import asyncio
+import os
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -24,6 +26,7 @@ class AgentDecision(Enum):
     CONTINUE = "continue"  # Continue to next agent
     SKIP = "skip"  # Skip this agent
     RETRY = "retry"  # Retry this agent
+    REPLAN = "replan"  # Re-run an earlier agent to remediate a failed check
     ERROR = "error"  # Error occurred
     COMPLETE = "complete"  # Analysis complete
 
@@ -250,9 +253,15 @@ class Agent(ABC):
                 message=error_msg,
                 execution_notes=errors,
             )
-            return error_result, state.add_log(
-                level="ERROR", agent=self.name, message=error_msg
+            # Record the failure so routers see this agent ran (and failed);
+            # otherwise the planner would schedule it again indefinitely.
+            failed_state = state.add_log(level="ERROR", agent=self.name, message=error_msg)
+            failed_state = failed_state.add_agent_result(
+                self.name,
+                {"success": False, "error": error_msg, "duration_seconds": 0.0},
+                decision=AgentDecision.ERROR.value,
             )
+            return error_result, failed_state
 
         if self.logger:
             self.logger.info(f"Starting {self.name}", agent=self.name)
@@ -260,7 +269,7 @@ class Agent(ABC):
         start_time = time.time()
 
         try:
-            result = await self.execute(state)
+            result = await asyncio.wait_for(self.execute(state), timeout=self.effective_timeout())
             duration = time.time() - start_time
 
             # Add execution duration to result
@@ -331,6 +340,8 @@ class Agent(ABC):
 
         except Exception as e:
             duration = time.time() - start_time
+            if isinstance(e, (asyncio.TimeoutError, TimeoutError)):
+                e = TimeoutError(f"{self.name} exceeded {self.effective_timeout():.0f}s timeout")
 
             if self.logger:
                 self.logger.error(
@@ -370,6 +381,14 @@ class Agent(ABC):
             )
 
             return error_result, updated_state
+
+    def effective_timeout(self) -> float:
+        """Per-agent timeout, scaled by ``DATAFORGE_TIMEOUT_SCALE`` for big datasets."""
+        try:
+            scale = float(os.getenv("DATAFORGE_TIMEOUT_SCALE", "1") or 1)
+        except ValueError:
+            scale = 1.0
+        return max(self.timeout_seconds * max(scale, 0.1), 1.0)
 
     def can_handle(self, state: GraphState) -> bool:
         """Check if this agent can process the current state.

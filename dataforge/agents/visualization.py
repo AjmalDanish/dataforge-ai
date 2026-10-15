@@ -10,6 +10,7 @@ from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
 from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
+from dataforge.shared.utils import analytic_columns
 
 
 def _is_temporal(series) -> bool:
@@ -130,7 +131,7 @@ class VisualizationAgent(Agent):
         try:
             # Get profile
             profile = state.get("profile", {})
-            numeric_columns = profile.get("numeric_columns", [])
+            numeric_columns = analytic_columns(profile.get("numeric_columns", []))
             categorical_columns = profile.get("categorical_columns", [])
 
             if not numeric_columns and not categorical_columns:
@@ -279,7 +280,7 @@ class VisualizationAgent(Agent):
                 # Save as HTML
                 filename = f"distribution_{col}.html"
                 filepath = self.output_dir / filename
-                fig.write_html(str(filepath))
+                fig.write_html(str(filepath), include_plotlyjs="directory")
 
                 visualizations.append(
                     {
@@ -330,7 +331,7 @@ class VisualizationAgent(Agent):
                 # Save as HTML
                 filename = f"boxplot_{col}.html"
                 filepath = self.output_dir / filename
-                fig.write_html(str(filepath))
+                fig.write_html(str(filepath), include_plotlyjs="directory")
 
                 visualizations.append(
                     {
@@ -389,7 +390,7 @@ class VisualizationAgent(Agent):
             # Save as HTML
             filename = "correlation_heatmap.html"
             filepath = self.output_dir / filename
-            fig.write_html(str(filepath))
+            fig.write_html(str(filepath), include_plotlyjs="directory")
 
             return {
                 "type": "correlation",
@@ -420,6 +421,8 @@ class VisualizationAgent(Agent):
         Returns:
             List of visualization dictionaries.
         """
+        import numpy as np
+        import pandas as pd
         import plotly.express as px
 
         visualizations = []
@@ -440,14 +443,21 @@ class VisualizationAgent(Agent):
                     x=col1,
                     y=col2,
                     title=f"{col1} vs {col2} (r={corr['correlation']:.2f})",
-                    trendline="ols" if len(df) > 10 else None,
                 )
+                # Least-squares trend line (numpy; avoids a statsmodels dependency).
+                pair = df[[col1, col2]].apply(pd.to_numeric, errors="coerce").dropna()
+                if len(pair) > 10 and pair[col1].nunique() > 1:
+                    slope, intercept = np.polyfit(pair[col1], pair[col2], 1)
+                    xs = np.array([pair[col1].min(), pair[col1].max()])
+                    fig.add_scatter(
+                        x=xs, y=slope * xs + intercept, mode="lines", name="trend"
+                    )
                 fig.update_layout(xaxis_title=col1, yaxis_title=col2)
 
                 # Save as HTML
                 filename = f"scatter_{col1}_{col2}.html"
                 filepath = self.output_dir / filename
-                fig.write_html(str(filepath))
+                fig.write_html(str(filepath), include_plotlyjs="directory")
 
                 visualizations.append(
                     {
@@ -507,7 +517,7 @@ class VisualizationAgent(Agent):
                 # Save as HTML
                 filename = f"bar_{col}.html"
                 filepath = self.output_dir / filename
-                fig.write_html(str(filepath))
+                fig.write_html(str(filepath), include_plotlyjs="directory")
 
                 visualizations.append(
                     {
@@ -584,7 +594,7 @@ class VisualizationAgent(Agent):
                 # Save as HTML
                 filename = f"box_{num_col}_by_{cat_col}.html"
                 filepath = self.output_dir / filename
-                fig.write_html(str(filepath))
+                fig.write_html(str(filepath), include_plotlyjs="directory")
 
                 visualizations.append(
                     {
@@ -639,7 +649,7 @@ class VisualizationAgent(Agent):
                 safe = "".join(c if c.isalnum() else "_" for c in name)[:40]
                 filename = f"kpi_{safe}.html"
                 filepath = self.output_dir / filename
-                fig.write_html(str(filepath))
+                fig.write_html(str(filepath), include_plotlyjs="directory")
 
                 cards.append(
                     {
@@ -674,7 +684,7 @@ class VisualizationAgent(Agent):
         import plotly.express as px
 
         temporal = [c for c in df.columns if _is_temporal(df[c])]
-        numeric = df.select_dtypes(include="number").columns.tolist()
+        numeric = analytic_columns(df.select_dtypes(include="number").columns.tolist())
         if not temporal or not numeric:
             return None
 
@@ -691,7 +701,7 @@ class VisualizationAgent(Agent):
 
             filename = f"trend_{ncol}_over_time.html"
             filepath = self.output_dir / filename
-            fig.write_html(str(filepath))
+            fig.write_html(str(filepath), include_plotlyjs="directory")
 
             return {
                 "type": "trend",

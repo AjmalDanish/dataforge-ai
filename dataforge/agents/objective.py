@@ -57,7 +57,7 @@ class BusinessObjectiveDetectionAgent(Agent):
     ]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
     failure_policy: FailurePolicy = FailurePolicy.SKIP
-    timeout_seconds: int = 30
+    timeout_seconds: int = 120
 
     # Domain-specific question templates for fallback
     DOMAIN_QUESTION_TEMPLATES: dict[BusinessDomain, list[dict[str, Any]]] = {
@@ -389,7 +389,7 @@ class BusinessObjectiveDetectionAgent(Agent):
         logger: Any | None = None,
         retry_policy: Any | None = None,
         failure_policy: Any | None = None,
-        timeout_seconds: int = 30,
+        timeout_seconds: int | None = None,
     ) -> None:
         """Initialize the BusinessObjectiveDetectionAgent.
 

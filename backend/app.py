@@ -1,10 +1,20 @@
-"""DataForge AI backend — FastAPI serving LangGraph engine.
+"""DataForge AI backend — FastAPI serving the LangGraph engine.
 
-TRD: docs/TRD.md §2, PRD: docs/PRD.md, DB: docs/DATABASE.md
-Deploy target: HuggingFace Spaces (Docker + uvicorn), frontend on Netlify.
+Endpoints (see /docs for the OpenAPI schema):
 
-Single-file MVP: in-memory run store + filesystem artifacts. Upgrades to
-Postgres persistence via dataforge.db.models when DATABASE_URL is set.
+    POST   /api/analyze                 upload a dataset, start a run
+    GET    /api/status/{run_id}         progress (phase, completed agents, events)
+    GET    /api/results/{run_id}        KPIs, insights, narrative, report links
+    GET    /api/download/{run_id}/{fmt} report as html | json | pdf
+    GET    /api/runs/{run_id}/files/... report assets (charts, plotly.min.js)
+    GET    /api/history                 recent runs
+    DELETE /api/runs/{run_id}           delete a run (admin token if configured)
+    WS     /ws/{run_id}                 live per-agent events
+
+Runs execute in a worker thread (the agents are CPU-bound pandas code), so the
+event loop stays free to serve polling and WebSocket traffic. Run metadata is
+kept in memory and mirrored to ``<OUTPUT_DIR>/<run_id>/run.json`` so history
+survives restarts.
 """
 
 from __future__ import annotations
@@ -12,52 +22,122 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shutil
+import sys
 import uuid
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import (
-    BackgroundTasks,
-    FastAPI,
-    File,
-    HTTPException,
-    UploadFile,
-    WebSocket,
-    WebSocketDisconnect,
-)
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse
 
-APP_VERSION = "2.0.0"
-ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.getenv(
-        "FRONTEND_URL",
-        "http://localhost:3000,http://localhost:3001,https://dataforge-ai.netlify.app,https://frontend-eight-pi-72.vercel.app,https://frontend-7hpg0n00d-azylas.vercel.app,https://frontend-3dmsqk6ev-azylas.vercel.app",
-    ).split(",")
-    if o.strip()
-]
+from dotenv import load_dotenv
+
+BASE_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(BASE_DIR.parent))  # make the `dataforge` package importable
+load_dotenv(BASE_DIR.parent / ".env")  # repo-root .env, if present (real env vars win)
+
+from dataforge import __version__ as APP_VERSION  # noqa: E402
+from dataforge.core.state import GraphState  # noqa: E402
+from dataforge.graph.workflow import run_workflow  # noqa: E402
+from dataforge.infrastructure.llm_providers import llm_from_env  # noqa: E402
+
 MAX_FILE_SIZE_MB = int(os.getenv("MAX_FILE_SIZE_MB", "100"))
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+MAX_CONCURRENT_RUNS = int(os.getenv("MAX_CONCURRENT_RUNS", "2"))
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".parquet", ".pq", ".json"}
+ALLOWED_ORIGINS = [o.strip() for o in os.getenv("FRONTEND_URL", "*").split(",") if o.strip()]
+ADMIN_TOKEN = os.getenv("DATAFORGE_ADMIN_TOKEN", "").strip()
 
-BASE_DIR = Path(__file__).parent
-UPLOAD_ROOT = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads")))
-OUTPUT_ROOT = Path(os.getenv("OUTPUT_DIR", str(BASE_DIR / "outputs")))
-UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
-OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+UPLOAD_ROOT = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "uploads"))).resolve()
+OUTPUT_ROOT = Path(os.getenv("OUTPUT_DIR", str(BASE_DIR / "outputs"))).resolve()
+
+RUN_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+REPORT_FILES = {"html": "report.html", "json": "report.json", "pdf": "report.pdf"}
+MEDIA_TYPES = {"html": "text/html", "json": "application/json", "pdf": "application/pdf"}
+# Fields persisted to run.json and returned by /api/status.
+PUBLIC_FIELDS = (
+    "run_id",
+    "filename",
+    "format",
+    "size_bytes",
+    "status",
+    "current_phase",
+    "steps_completed",
+    "steps_skipped",
+    "business_domain",
+    "created_at",
+    "started_at",
+    "finished_at",
+    "duration_s",
+    "error",
+    "llm",
+)
+
+RUNS: dict[str, dict[str, Any]] = {}
+WS_CONNECTIONS: dict[str, list[WebSocket]] = {}
+RUNS_LOCK = asyncio.Lock()
+RUN_SLOTS = asyncio.Semaphore(MAX_CONCURRENT_RUNS)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _error(status: int, kind: str, title: str, detail: str) -> HTTPException:
+    return HTTPException(status_code=status, detail={"type": kind, "title": title, "detail": detail})
+
+
+def _check_run_id(run_id: str) -> str:
+    # Run ids become path segments; only accept our own UUID4 format.
+    if not RUN_ID_RE.match(run_id):
+        raise _error(404, "not_found", "Run not found", f"No run {run_id}")
+    return run_id
+
+
+def _persist(rec: dict[str, Any]) -> None:
+    out = OUTPUT_ROOT / rec["run_id"]
+    out.mkdir(parents=True, exist_ok=True)
+    payload = {k: rec.get(k) for k in PUBLIC_FIELDS}
+    (out / "run.json").write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+
+
+def _load_runs_from_disk() -> None:
+    """Rehydrate run metadata after a restart; interrupted runs become failed."""
+    for path in OUTPUT_ROOT.glob("*/run.json"):
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not RUN_ID_RE.match(str(rec.get("run_id", ""))):
+            continue
+        if rec.get("status") in ("queued", "running"):
+            rec.update(status="failed", error="Server restarted before the run finished")
+        rec["events"] = []
+        RUNS[rec["run_id"]] = rec
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    UPLOAD_ROOT.mkdir(parents=True, exist_ok=True)
+    OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
+    _load_runs_from_disk()
+    yield
+
 
 app = FastAPI(
     title="DataForge AI API",
     version=APP_VERSION,
-    description="Autonomous BI engine — LangGraph 13 agents. See docs/TRD.md",
+    description="Autonomous BI engine — 13 LangGraph agents behind a REST + WebSocket API.",
+    lifespan=lifespan,
 )
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,310 +145,116 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def _load_existing_runs() -> None:
-    """Rehydrate runs that already have output on disk (survives restarts)."""
-    try:
-        for p in OUTPUT_ROOT.iterdir():
-            if p.is_dir() and (p / "results.json").exists() and p.name not in RUNS:
-                try:
-                    rec = _load_run_from_disk(p.name)
-                    if rec:
-                        RUNS[p.name] = rec
-                except Exception:
-                    continue
-    except Exception:
-        pass
-
-RUNS: dict[str, dict[str, Any]] = {}
-WS_CONNECTIONS: dict[str, list[WebSocket]] = {}
-RUNS_LOCK = asyncio.Lock()
-
-
-def _load_run_from_disk(run_id: str) -> dict[str, Any] | None:
-    """Rehydrate a run that exists on disk but not in memory (after restart)."""
-    out = OUTPUT_ROOT / run_id
-    if not out.exists():
-        return None
-    # if results.json exists -> done, else try to infer from files
-    results_path = out / "results.json"
-    if results_path.exists():
-        try:
-            snap = json.loads(results_path.read_text(encoding="utf-8"))
-            # snap was written with business_domain, kpis, etc., but may not have steps_completed
-            # Try to recover steps_completed from results.json or from report existence
-            steps = snap.get("steps_completed") or []
-            # Fallback: if snapshot has no steps, infer from known pipeline (done = 24 steps)
-            if not steps:
-                # Check if report exists -> assume full pipeline completed
-                if (out / "report.html").exists():
-                    steps = [
-                        "PlannerAgent","DataValidationAgent","PlannerAgent","DataCleaningAgent","PlannerAgent","SchemaDetectionAgent","PlannerAgent","BusinessDomainDetectionAgent","PlannerAgent","BusinessObjectiveDetectionAgent","PlannerAgent","DataProfilingAgent","PlannerAgent","FeatureEngineeringAgent","PlannerAgent","KPIDiscoveryAgent","PlannerAgent","StatisticalAnalysisAgent","PlannerAgent","InsightGenerationAgent","PlannerAgent","VisualizationAgent","PlannerAgent","ReportingAgent",
-                    ]
-            _bd = snap.get("business_domain") or "hr"
-            # normalize old "BusinessDomain.HR" strings and enum values
-            if hasattr(_bd, "value"):
-                try:
-                    _bd = str(_bd.value).lower()
-                except Exception:
-                    _bd = str(_bd).lower()
-            else:
-                _bd = str(_bd).lower()
-                if _bd.startswith("businessdomain."):
-                    _bd = _bd.split(".", 1)[1]
-            rec = _new_run_record(run_id, snap.get("filename") or "unknown", snap.get("format") or "csv", snap.get("size_bytes") or 0)
-            rec.update(
-                {
-                    "status": "done",
-                    "business_domain": _bd,
-                    "steps_completed": steps,
-                    "current_phase": 7,
-                    "finished_at": snap.get("finished_at"),
-                    "duration_s": snap.get("duration_s"),
-                    "output_dir": str(out),
-                }
-            )
-            # try to find original upload filename from upload dir
-            up_dir = UPLOAD_ROOT / run_id
-            if up_dir.exists():
-                for f in up_dir.iterdir():
-                    if f.is_file():
-                        rec["filename"] = f.name
-                        rec["upload_path"] = str(f)
-                        break
-            return rec
-        except Exception:
-            pass
-    # No results.json but output dir exists -> treat as done if report exists, else failed
-    if (out / "report.html").exists():
-        rec = _new_run_record(run_id, "unknown", "csv", 0)
-        rec.update({"status": "done", "current_phase": 7, "steps_completed": [], "output_dir": str(out)})
-        return rec
-    return None
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _new_run_record(run_id: str, filename: str, file_format: str, size_bytes: int) -> dict[str, Any]:
-    return {
-        "run_id": run_id,
-        "filename": filename,
-        "format": file_format,
-        "size_bytes": size_bytes,
-        "status": "queued",
-        "current_phase": 1,
-        "steps_completed": [],
-        "steps_skipped": [],
-        "quality_warnings": [],
-        "quality_errors": [],
-        "created_at": _now_iso(),
-        "started_at": None,
-        "finished_at": None,
-        "duration_s": None,
-        "business_domain": None,
-        "error": None,
-        "output_dir": str(OUTPUT_ROOT / run_id),
-        "upload_path": None,
-        "events": [],
-    }
+async def _get_run(run_id: str) -> dict[str, Any]:
+    _check_run_id(run_id)
+    async with RUNS_LOCK:
+        rec = RUNS.get(run_id)
+    if rec is None:
+        raise _error(404, "not_found", "Run not found", f"No run {run_id}")
+    return rec
 
 
 async def _broadcast(run_id: str, payload: dict[str, Any]) -> None:
     async with RUNS_LOCK:
         rec = RUNS.get(run_id)
         if rec is not None:
-            rec.setdefault("events", []).append(payload)
-    conns = list(WS_CONNECTIONS.get(run_id, []))
-    dead: list[WebSocket] = []
-    for ws in conns:
+            rec["events"].append(payload)
+            if payload.get("type") == "agent":
+                rec["current_phase"] = payload.get("phase", rec["current_phase"])
+                if payload.get("success"):
+                    rec["steps_completed"].append(payload["agent"])
+    for ws in list(WS_CONNECTIONS.get(run_id, [])):
         try:
             await ws.send_json(payload)
         except Exception:
-            dead.append(ws)
-    for ws in dead:
-        try:
-            WS_CONNECTIONS.get(run_id, []).remove(ws)
-        except ValueError:
-            pass
+            conns = WS_CONNECTIONS.get(run_id, [])
+            if ws in conns:
+                conns.remove(ws)
 
 
-def _validate_upload(filename: str, size: int) -> str:
-    ext = Path(filename).suffix.lower()
-    if ext not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "type": "unsupported_format",
-                "title": "Unsupported file format",
-                "detail": f"Extension {ext} not allowed. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
-            },
-        )
-    if size > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail={
-                "type": "file_too_large",
-                "title": "File too large",
-                "detail": f"File {size} bytes exceeds {MAX_FILE_SIZE_MB} MB limit",
-            },
-        )
-    if ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "type": "invalid_filename",
-                "title": "Invalid filename",
-                "detail": "Filename must not contain path separators",
-            },
-        )
-    return ext
+def _snapshot(final: GraphState, duration_s: float) -> dict[str, Any]:
+    """JSON-safe results payload written to results.json."""
+    report = final.get("report") or {}
+    return {
+        "business_domain": str(final.get("business_domain") or "general"),
+        "domain_confidence": final.get("business_domain_confidence"),
+        "discovered_kpis": final.get("discovered_kpis") or [],
+        "business_insights": final.get("business_insights") or [],
+        "executive_narrative": final.get("executive_narrative"),
+        "business_objectives": final.get("business_objectives") or [],
+        "evaluation": final.get("evaluation"),
+        "dashboard": final.get("dashboard") or {},
+        "steps_completed": [s for s in final.steps_completed if s != "PlannerAgent"],
+        "steps_skipped": list(final.steps_skipped),
+        "quality_warnings": list(final.quality_warnings),
+        "pdf_available": bool(report.get("pdf_available")),
+        "duration_s": duration_s,
+    }
 
 
 async def _run_analysis(run_id: str, upload_path: Path, output_dir: Path) -> None:
-    started = datetime.now(timezone.utc)
-    async with RUNS_LOCK:
-        rec = RUNS.get(run_id)
-        if rec is None:
-            return
-        rec["status"] = "running"
-        rec["started_at"] = started.isoformat()
-        rec["current_phase"] = 1
+    loop = asyncio.get_running_loop()
 
-    await _broadcast(run_id, {"type": "status", "run_id": run_id, "status": "running", "ts": _now_iso()})
+    async def on_event(event: dict[str, Any]) -> None:
+        # Called inside the worker thread's loop; hop back to the server loop.
+        asyncio.run_coroutine_threadsafe(_broadcast(run_id, {**event, "ts": _now_iso()}), loop)
 
-    try:
-        from dataforge.core.state import GraphState
-        from dataforge.graph.workflow import create_graph
-
-        output_dir.mkdir(parents=True, exist_ok=True)
-        state = GraphState(
-            input_dataset_path=str(upload_path),
-            output_dir=str(output_dir),
-            execution_id=run_id,
-            data={"pipeline_version": "v2", "run_id": run_id},
-        )
-
-        graph = create_graph()
-        final_state = await graph.ainvoke(state, {"recursion_limit": 35})  # type: ignore
-
-        if isinstance(final_state, dict):
-            steps_completed = list(final_state.get("steps_completed") or [])
-            current_phase_final = final_state.get("current_phase", 7)
-            domain_final = (final_state.get("data") or {}).get("business_domain")
-            data_dict = final_state.get("data") or {}
-        else:
-            steps_completed = list(getattr(final_state, "steps_completed", []) or [])
-            current_phase_final = getattr(final_state, "current_phase", 7)
-            try:
-                domain_final = final_state.get("business_domain")  # type: ignore
-            except Exception:
-                domain_final = getattr(final_state, "business_domain", None)
-            data_dict = getattr(final_state, "data", {}) or {}
-        # Normalize BusinessDomain enum to lowercase string
-        if domain_final is not None and hasattr(domain_final, "value"):
-            try:
-                domain_final = str(domain_final.value).lower()
-            except Exception:
-                domain_final = str(domain_final).lower()
-        elif domain_final is not None:
-            domain_final = str(domain_final).lower()
-            # strip "businessdomain." prefix if str(enum) was stored
-            if domain_final.startswith("businessdomain."):
-                domain_final = domain_final.split(".", 1)[1]
-
-        # Build snapshot for /results
-        # Normalize business_domain for JSON (enum → string)
-        _bd_snap = domain_final
-        if _bd_snap is not None and hasattr(_bd_snap, "value"):
-            try:
-                _bd_snap = str(_bd_snap.value).lower()
-            except Exception:
-                _bd_snap = str(_bd_snap).lower()
-        elif _bd_snap is not None:
-            _bd_snap = str(_bd_snap).lower()
-            if _bd_snap.startswith("businessdomain."):
-                _bd_snap = _bd_snap.split(".", 1)[1]
-        snapshot: dict[str, Any] = {
-            "run_id": run_id,
-            "status": "done",
-            "finished_at": datetime.now(timezone.utc).isoformat(),
-            "duration_s": (datetime.now(timezone.utc) - started).total_seconds(),
-            "business_domain": _bd_snap,
-            "steps_completed": steps_completed,
-            "steps_skipped": [],
-            "current_phase": current_phase_final,
-        }
-        # pull v2 outputs (keep normalized business_domain)
-        for key in (
-            "business_insights",
-            "discovered_kpis",
-            "visualizations",
-            "dashboard",
-            "report_html",
-            "report_json",
-            "profile",
-            "statistics",
-        ):
-            snapshot[key] = data_dict.get(key)
-        # ensure business_domain stays normalized
-        snapshot["business_domain"] = _bd_snap
-
-        try:
-            with open(output_dir / "results.json", "w", encoding="utf-8") as f:
-                json.dump(snapshot, f, indent=2, default=str, ensure_ascii=False)
-        except Exception:
-            pass
-
-        finished = datetime.now(timezone.utc)
-        duration_s = (finished - started).total_seconds()
-        snapshot["finished_at"] = finished.isoformat()
-        snapshot["duration_s"] = duration_s
-        try:
-            with open(output_dir / "results.json", "w", encoding="utf-8") as f:
-                json.dump(snapshot, f, indent=2, default=str, ensure_ascii=False)
-        except Exception:
-            pass
-
+    async with RUN_SLOTS:
+        started = datetime.now(timezone.utc)
         async with RUNS_LOCK:
-            if run_id in RUNS:
-                RUNS[run_id].update(
-                    {
-                        "status": "done",
-                        "finished_at": finished.isoformat(),
-                        "duration_s": duration_s,
-                        "current_phase": 7,
-                        "steps_completed": steps_completed,
-                    }
-                )
-                if domain_final:
-                    RUNS[run_id]["business_domain"] = str(domain_final)
-                elif snapshot.get("business_domain"):
-                    RUNS[run_id]["business_domain"] = str(snapshot["business_domain"])
+            rec = RUNS[run_id]
+            rec.update(status="running", started_at=started.isoformat())
+        await _broadcast(run_id, {"type": "status", "status": "running", "ts": _now_iso()})
 
-        await _broadcast(run_id, {"type": "done", "run_id": run_id, "status": "done", "duration_s": duration_s, "ts": _now_iso()})
-
-    except Exception as e:
-        finished = datetime.now(timezone.utc)
-        duration_s = (finished - started).total_seconds()
-        err = f"{type(e).__name__}: {e}"
-        async with RUNS_LOCK:
-            if run_id in RUNS:
-                RUNS[run_id].update(
-                    {"status": "failed", "finished_at": finished.isoformat(), "duration_s": duration_s, "error": err}
-                )
         try:
-            with open(output_dir / "error.json", "w", encoding="utf-8") as f:
-                json.dump({"run_id": run_id, "error": err, "ts": _now_iso()}, f)
-        except Exception:
-            pass
-        await _broadcast(run_id, {"type": "error", "run_id": run_id, "status": "failed", "error": err, "ts": _now_iso()})
+            llm = llm_from_env()
+            async with RUNS_LOCK:
+                rec["llm"] = f"{llm.provider_name}/{llm.config.model}" if llm else None
+            state = GraphState(
+                input_dataset_path=str(upload_path),
+                output_dir=str(output_dir),
+                execution_id=run_id,
+            )
+            final = await asyncio.to_thread(
+                asyncio.run, run_workflow(state, llm_provider=llm, on_event=on_event)
+            )
+            duration_s = (datetime.now(timezone.utc) - started).total_seconds()
+            snapshot = _snapshot(final, duration_s)
+            (output_dir / "results.json").write_text(
+                json.dumps(snapshot, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
+            )
+            done = "ReportingAgent" in snapshot["steps_completed"]
+            async with RUNS_LOCK:
+                rec.update(
+                    status="done" if done else "failed",
+                    error=None if done else "Analysis ended before a report was produced",
+                    finished_at=_now_iso(),
+                    duration_s=duration_s,
+                    current_phase=final.current_phase,
+                    steps_completed=snapshot["steps_completed"],
+                    steps_skipped=snapshot["steps_skipped"],
+                    business_domain=snapshot["business_domain"],
+                )
+            await _broadcast(
+                run_id, {"type": "done" if done else "error", "status": rec["status"], "error": rec["error"], "duration_s": duration_s, "ts": _now_iso()}
+            )
+        except Exception as e:
+            async with RUNS_LOCK:
+                rec.update(
+                    status="failed",
+                    error=f"{type(e).__name__}: {e}",
+                    finished_at=_now_iso(),
+                    duration_s=(datetime.now(timezone.utc) - started).total_seconds(),
+                )
+            await _broadcast(run_id, {"type": "error", "status": "failed", "error": rec["error"], "ts": _now_iso()})
+        finally:
+            async with RUNS_LOCK:
+                _persist(rec)
 
 
 @app.get("/healthz")
-async def healthz() -> dict[str, str]:
-    return {"status": "ok", "service": "dataforge-api", "version": APP_VERSION}
+async def healthz() -> dict[str, Any]:
+    return {"status": "ok", "service": "dataforge-api", "version": APP_VERSION, "llm": llm_from_env() is not None}
 
 
 @app.get("/")
@@ -377,165 +263,168 @@ async def root() -> dict[str, str]:
 
 
 @app.post("/api/analyze", status_code=201)
-async def analyze(background_tasks: BackgroundTasks, file: UploadFile = File(...)) -> JSONResponse:
-    filename = file.filename or "upload.csv"
-    content = await file.read()
-    size = len(content)
-    ext = _validate_upload(filename, size)
+async def analyze(file: UploadFile = File(...)) -> dict[str, Any]:
+    filename = Path(file.filename or "upload.csv").name
+    ext = Path(filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        raise _error(
+            400, "unsupported_format", "Unsupported file format",
+            f"Extension {ext or '(none)'} not allowed. Allowed: {sorted(ALLOWED_EXTENSIONS)}",
+        )
+
     run_id = str(uuid.uuid4())
-    safe_name = Path(filename).name
-    run_upload_dir = UPLOAD_ROOT / run_id
-    run_upload_dir.mkdir(parents=True, exist_ok=True)
-    upload_path = run_upload_dir / safe_name
-    upload_path.write_bytes(content)
+    upload_dir = UPLOAD_ROOT / run_id
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    upload_path = upload_dir / filename
+    size = 0
+    with upload_path.open("wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > MAX_FILE_SIZE_BYTES:
+                out.close()
+                shutil.rmtree(upload_dir, ignore_errors=True)
+                raise _error(413, "file_too_large", "File too large", f"Limit is {MAX_FILE_SIZE_MB} MB")
+            out.write(chunk)
+    if size == 0:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise _error(400, "empty_file", "Empty file", "The uploaded file is empty")
+
     output_dir = OUTPUT_ROOT / run_id
     output_dir.mkdir(parents=True, exist_ok=True)
-    record = _new_run_record(run_id, safe_name, ext.lstrip("."), size)
-    record["upload_path"] = str(upload_path)
-    record["output_dir"] = str(output_dir)
+    rec: dict[str, Any] = {
+        "run_id": run_id,
+        "filename": filename,
+        "format": ext.lstrip("."),
+        "size_bytes": size,
+        "status": "queued",
+        "current_phase": 1,
+        "steps_completed": [],
+        "steps_skipped": [],
+        "business_domain": None,
+        "created_at": _now_iso(),
+        "started_at": None,
+        "finished_at": None,
+        "duration_s": None,
+        "error": None,
+        "llm": None,
+        "events": [],
+    }
     async with RUNS_LOCK:
-        RUNS[run_id] = record
-    background_tasks.add_task(_run_analysis, run_id, upload_path, output_dir)
-    return JSONResponse(
-        status_code=201,
-        content={
-            "run_id": run_id,
-            "status": "queued",
-            "status_url": f"/api/status/{run_id}",
-            "results_url": f"/api/results/{run_id}",
-            "ws_url": f"/ws/{run_id}",
-            "output_dir": str(output_dir),
-        },
-    )
+        RUNS[run_id] = rec
+        _persist(rec)
+    asyncio.create_task(_run_analysis(run_id, upload_path, output_dir))
+    return {
+        "run_id": run_id,
+        "status": "queued",
+        "status_url": f"/api/status/{run_id}",
+        "results_url": f"/api/results/{run_id}",
+        "ws_url": f"/ws/{run_id}",
+    }
 
 
 @app.get("/api/status/{run_id}")
 async def get_status(run_id: str) -> dict[str, Any]:
+    rec = await _get_run(run_id)
     async with RUNS_LOCK:
-        rec = RUNS.get(run_id)
-        if rec is None:
-            # Try to rehydrate from disk (survives restarts)
-            rec = _load_run_from_disk(run_id)
-            if rec is not None:
-                RUNS[run_id] = rec
-            else:
-                raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
-        return {
-            "run_id": run_id,
-            "status": rec["status"],
-            "current_phase": rec.get("current_phase", 1),
-            "steps_completed": rec.get("steps_completed", []),
-            "steps_skipped": rec.get("steps_skipped", []),
-            "quality_warnings": rec.get("quality_warnings", []),
-            "quality_errors": rec.get("quality_errors", []),
-            "business_domain": rec.get("business_domain"),
-            "created_at": rec.get("created_at"),
-            "started_at": rec.get("started_at"),
-            "finished_at": rec.get("finished_at"),
-            "duration_s": rec.get("duration_s"),
-            "error": rec.get("error"),
-            "events": rec.get("events", [])[-50:],
-        }
+        payload = {k: rec.get(k) for k in PUBLIC_FIELDS}
+        payload["events"] = rec["events"][-50:]
+    return payload
 
 
 @app.get("/api/results/{run_id}")
 async def get_results(run_id: str) -> dict[str, Any]:
-    async with RUNS_LOCK:
-        rec = RUNS.get(run_id)
-        if rec is None:
-            rec = _load_run_from_disk(run_id)
-            if rec is not None:
-                RUNS[run_id] = rec
-            else:
-                raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
-        if rec["status"] not in ("done", "failed"):
-            return {"run_id": run_id, "status": rec["status"], "message": "Results not ready — poll /api/status until status=done"}
-        if rec["status"] == "failed":
-            return {"run_id": run_id, "status": "failed", "error": rec.get("error"), "finished_at": rec.get("finished_at")}
+    rec = await _get_run(run_id)
+    if rec["status"] in ("queued", "running"):
+        return {"run_id": run_id, "status": rec["status"], "message": "Results not ready — poll /api/status"}
+    if rec["status"] == "failed":
+        return {"run_id": run_id, "status": "failed", "error": rec.get("error"), "finished_at": rec.get("finished_at")}
+
     output_dir = OUTPUT_ROOT / run_id
-    snapshot_path = output_dir / "results.json"
-    snapshot: dict[str, Any] = {}
-    if snapshot_path.exists():
-        try:
-            snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
-        except Exception:
-            snapshot = {}
-    async with RUNS_LOCK:
-        rec = RUNS.get(run_id, {})
-    html_path = output_dir / "report.html"
-    json_path = output_dir / "report.json"
-    report_html = f"/api/download/{run_id}/html" if html_path.exists() else None
-    report_json = f"/api/download/{run_id}/json" if json_path.exists() else None
+    try:
+        snapshot = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        snapshot = {}
+    reports = {
+        fmt: f"/api/download/{run_id}/{fmt}" if (output_dir / name).exists() else None
+        for fmt, name in REPORT_FILES.items()
+    }
     viz_dir = output_dir / "visualizations"
-    viz_count = len(list(viz_dir.glob("*.html"))) if viz_dir.exists() else 0
+    charts = sorted(p.name for p in viz_dir.glob("*.html")) if viz_dir.exists() else []
+    kpis = snapshot.get("discovered_kpis") or []
+    insights = snapshot.get("business_insights") or []
     return {
         "run_id": run_id,
         "status": "done",
-        "business_domain": rec.get("business_domain") or snapshot.get("business_domain"),
+        "filename": rec.get("filename"),
+        "business_domain": snapshot.get("business_domain") or rec.get("business_domain"),
+        "domain_confidence": snapshot.get("domain_confidence"),
         "duration_s": rec.get("duration_s"),
         "finished_at": rec.get("finished_at"),
-        "kpis": snapshot.get("discovered_kpis") or [],
-        "insights": snapshot.get("business_insights") or [],
+        "llm": rec.get("llm"),
+        "kpis": kpis,
+        "insights": insights,
+        "narrative": snapshot.get("executive_narrative"),
+        "objectives": snapshot.get("business_objectives") or [],
+        "evaluation": snapshot.get("evaluation"),
         "dashboard": snapshot.get("dashboard") or {},
-        "report_urls": {"html": report_html, "json": report_json, "pdf": None},
-        "counts": {"kpis": len(snapshot.get("discovered_kpis") or []), "insights": len(snapshot.get("business_insights") or []), "visualizations": viz_count},
-        "trace": {"steps_completed": rec.get("steps_completed", []), "events": rec.get("events", [])[-100:]},
+        "report_urls": reports,
+        "report_view_url": f"/api/runs/{run_id}/files/report.html" if reports["html"] else None,
+        "charts": [{"name": c, "url": f"/api/runs/{run_id}/files/visualizations/{c}"} for c in charts],
+        "counts": {"kpis": len(kpis), "insights": len(insights), "visualizations": len(charts)},
+        "trace": {
+            "steps_completed": snapshot.get("steps_completed") or rec.get("steps_completed", []),
+            "steps_skipped": snapshot.get("steps_skipped") or [],
+            "events": rec.get("events", [])[-100:],
+        },
     }
 
 
 @app.get("/api/download/{run_id}/{fmt}")
 async def download(run_id: str, fmt: str) -> FileResponse:
-    if fmt not in ("html", "json", "pdf"):
-        raise HTTPException(status_code=400, detail={"type": "bad_format", "title": "Bad format", "detail": "fmt must be html, json, or pdf"})
-    async with RUNS_LOCK:
-        rec = RUNS.get(run_id)
-        if rec is None:
-            raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
-        if rec["status"] != "done":
-            raise HTTPException(status_code=409, detail={"type": "not_ready", "title": "Not ready", "detail": "Run not done yet"})
-    output_dir = OUTPUT_ROOT / run_id
-    mapping = {"html": output_dir / "report.html", "json": output_dir / "report.json", "pdf": output_dir / "report.pdf"}
-    path = mapping[fmt]
+    if fmt not in REPORT_FILES:
+        raise _error(400, "bad_format", "Bad format", "fmt must be html, json, or pdf")
+    rec = await _get_run(run_id)
+    if rec["status"] != "done":
+        raise _error(409, "not_ready", "Not ready", "Run not done yet")
+    path = OUTPUT_ROOT / run_id / REPORT_FILES[fmt]
     if not path.exists():
-        raise HTTPException(status_code=404, detail={"type": "artifact_missing", "title": "Artifact not found", "detail": f"{fmt} report not generated"})
-    media = {"html": "text/html", "json": "application/json", "pdf": "application/pdf"}[fmt]
-    return FileResponse(str(path), media_type=media, filename=f"dataforge-{run_id}.{fmt}")
+        raise _error(404, "artifact_missing", "Artifact not found", f"{fmt} report not generated")
+    return FileResponse(str(path), media_type=MEDIA_TYPES[fmt], filename=f"dataforge-{run_id}.{fmt}")
+
+
+@app.get("/api/runs/{run_id}/files/{file_path:path}")
+async def run_file(run_id: str, file_path: str) -> FileResponse:
+    """Serve a report asset so report.html's relative chart links work."""
+    await _get_run(run_id)
+    root = (OUTPUT_ROOT / run_id).resolve()
+    target = (root / file_path).resolve()
+    allowed = target.suffix in (".html", ".js", ".json", ".pdf", ".png")
+    if not allowed or not target.is_relative_to(root) or not target.is_file():
+        raise _error(404, "artifact_missing", "Artifact not found", file_path)
+    return FileResponse(str(target))
 
 
 @app.get("/api/history")
 async def history(limit: int = 20) -> dict[str, Any]:
     limit = max(1, min(limit, 100))
     async with RUNS_LOCK:
-        items = sorted(RUNS.values(), key=lambda r: r.get("created_at", ""), reverse=True)[:limit]
-        out = [
-            {
-                "run_id": r["run_id"],
-                "filename": r.get("filename"),
-                "status": r["status"],
-                "business_domain": r.get("business_domain"),
-                "created_at": r.get("created_at"),
-                "duration_s": r.get("duration_s"),
-                "steps_completed": r.get("steps_completed", []),
-            }
-            for r in items
-        ]
-    return {"runs": out, "count": len(out)}
+        items = sorted(RUNS.values(), key=lambda r: r.get("created_at") or "", reverse=True)[:limit]
+        runs = [{k: r.get(k) for k in PUBLIC_FIELDS} for r in items]
+    return {"runs": runs, "count": len(runs)}
 
 
 @app.websocket("/ws/{run_id}")
 async def ws_run(websocket: WebSocket, run_id: str) -> None:
     await websocket.accept()
     async with RUNS_LOCK:
-        rec = RUNS.get(run_id)
+        rec = RUNS.get(run_id) if RUN_ID_RE.match(run_id) else None
+        backlog = list(rec["events"]) if rec else []
     if rec is None:
         await websocket.send_json({"type": "error", "detail": "Run not found", "run_id": run_id})
         await websocket.close()
         return
-    for ev in rec.get("events", [])[-20:]:
-        try:
-            await websocket.send_json(ev)
-        except Exception:
-            break
+    for event in backlog:
+        await websocket.send_json(event)
     WS_CONNECTIONS.setdefault(run_id, []).append(websocket)
     try:
         while True:
@@ -543,8 +432,8 @@ async def ws_run(websocket: WebSocket, run_id: str) -> None:
                 await asyncio.wait_for(websocket.receive_text(), timeout=30)
             except asyncio.TimeoutError:
                 await websocket.send_json({"type": "ping", "ts": _now_iso()})
-            except WebSocketDisconnect:
-                break
+    except WebSocketDisconnect:
+        pass
     finally:
         conns = WS_CONNECTIONS.get(run_id, [])
         if websocket in conns:
@@ -552,23 +441,15 @@ async def ws_run(websocket: WebSocket, run_id: str) -> None:
 
 
 @app.delete("/api/runs/{run_id}")
-async def delete_run(run_id: str) -> dict[str, str]:
+async def delete_run(run_id: str, x_admin_token: str | None = Header(default=None)) -> dict[str, str]:
+    if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
+        raise _error(403, "forbidden", "Forbidden", "A valid X-Admin-Token header is required")
+    rec = await _get_run(run_id)
+    if rec["status"] in ("queued", "running"):
+        raise _error(409, "running", "Run in progress", "Wait for the run to finish before deleting it")
     async with RUNS_LOCK:
-        rec = RUNS.pop(run_id, None)
-    if rec is None:
-        raise HTTPException(status_code=404, detail={"type": "not_found", "title": "Run not found", "detail": f"No run {run_id}"})
-    for p in [Path(rec.get("upload_path") or ""), Path(rec.get("output_dir") or "")]:
-        try:
-            if p and p.exists():
-                if p.is_dir():
-                    shutil.rmtree(p, ignore_errors=True)
-                else:
-                    p.unlink(missing_ok=True)
-                    try:
-                        p.parent.rmdir()
-                    except OSError:
-                        pass
-        except Exception:
-            pass
+        RUNS.pop(run_id, None)
+    shutil.rmtree(UPLOAD_ROOT / run_id, ignore_errors=True)
+    shutil.rmtree(OUTPUT_ROOT / run_id, ignore_errors=True)
     WS_CONNECTIONS.pop(run_id, None)
     return {"status": "deleted", "run_id": run_id}

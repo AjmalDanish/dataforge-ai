@@ -111,7 +111,7 @@ class TestDataValidationAgentInit:
         assert agent.required_inputs == []
         assert agent.produced_outputs == ["raw_data", "file_metadata", "validation_report"]
         assert agent.retry_policy.max_retries == 1
-        assert agent.timeout_seconds == 30
+        assert agent.timeout_seconds == 120
 
     def test_agent_thresholds(self, agent: DataValidationAgent) -> None:
         """Test validation thresholds are set correctly."""

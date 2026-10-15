@@ -5,7 +5,9 @@ from typing import Any
 from dataforge.agents.base import Agent, AgentDecision, AgentResult
 from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
+from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
+from dataforge.shared.utils import analytic_columns
 
 
 class StatisticalAnalysisAgent(Agent):
@@ -19,7 +21,15 @@ class StatisticalAnalysisAgent(Agent):
     - Outlier detection
 
     Generates statistical insights and recommendations for visualization.
+    Reads ``cleaned_data`` (falls back to ``raw_data``).
     """
+
+    phase: ExecutionPhase = ExecutionPhase.STATISTICAL_ANALYSIS
+    required_inputs: list[str] = []
+    produced_outputs: list[str] = ["statistics"]
+    retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
+    failure_policy: FailurePolicy = FailurePolicy.SKIP
+    timeout_seconds: int = 120
 
     def __init__(
         self,
@@ -46,7 +56,9 @@ class StatisticalAnalysisAgent(Agent):
         """
         import pandas as pd
 
-        df = state.get("raw_data")
+        df = state.get("cleaned_data")
+        if df is None:
+            df = state.get("raw_data")
         if df is None:
             return AgentResult(
                 decision=AgentDecision.ERROR,
@@ -69,7 +81,7 @@ class StatisticalAnalysisAgent(Agent):
         try:
             # Get numeric columns from profile
             profile = state.get("profile", {})
-            numeric_columns = profile.get("numeric_columns", [])
+            numeric_columns = analytic_columns(profile.get("numeric_columns", []))
 
             if not numeric_columns:
                 self.logger.warning(

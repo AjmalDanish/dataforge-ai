@@ -72,7 +72,7 @@ class TestDataCleaningAgentInit:
         assert "cleaned_data" in agent.produced_outputs
         assert "cleaning_report" in agent.produced_outputs
         assert agent.retry_policy.max_retries == 2
-        assert agent.timeout_seconds == 60
+        assert agent.timeout_seconds == 120
 
     def test_agent_thresholds(self, agent: DataCleaningAgent) -> None:
         """Test cleaning thresholds are set correctly."""

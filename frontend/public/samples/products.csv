@@ -1,0 +1,21 @@
+product_id,product_name,category,price,stock_quantity,sold_quantity,customer_rating,reviews_count,launch_date
+101,Smartphone Pro,Electronics,699.99,150,245,4.5,120,2023-01-15
+102,Laptop Ultra,Electronics,1299.99,80,156,4.7,85,2023-02-20
+103,Wireless Earbuds,Electronics,149.99,500,890,4.3,320,2023-03-10
+104,Coffee Maker,Home,79.99,200,450,4.2,180,2023-04-05
+105,Desk Chair,Furniture,249.99,60,95,4.4,65,2023-05-12
+106,Tablet Air,Electronics,449.99,120,210,4.1,140,2023-06-18
+107,Smart Watch,Electronics,299.99,180,340,4.6,95,2023-07-22
+108,Bookshelf,Furniture,159.99,40,72,4.3,42,2023-08-30
+109,Desk Lamp,Home,39.99,300,520,4.0,280,2023-09-14
+110,Bluetooth Speaker,Electronics,89.99,250,480,4.4,210,2023-10-25
+111,Standing Desk,Furniture,599.99,25,48,4.8,30,2023-11-08
+112,Blender,Home,119.99,180,310,4.2,155,2023-12-01
+113,Monitor 27in,Electronics,349.99,90,175,4.5,110,2024-01-10
+114,Office Chair Pro,Furniture,399.99,45,88,4.6,55,2024-02-15
+115,Keyboard,Electronics,79.99,400,650,4.2,290,2024-03-20
+116,Mouse,Electronics,49.99,600,920,4.1,380,2024-04-12
+117,Printer,Home,199.99,70,130,4.0,78,2024-05-08
+118,Webcam,Electronics,129.99,150,220,4.3,125,2024-06-01
+119,File Cabinet,Furniture,129.99,35,62,4.2,38,2024-07-15
+120,USB Hub,Electronics,29.99,700,1050,3.9,420,2024-08-20

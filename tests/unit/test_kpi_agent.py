@@ -59,7 +59,7 @@ class TestKPIContract:
         assert agent.failure_policy == FailurePolicy.SKIP
 
     def test_timeout(self, agent):
-        assert agent.timeout_seconds == 30
+        assert agent.timeout_seconds == 60
 
 
 class TestKPIExecute:
@@ -104,3 +104,26 @@ class TestKPIExecute:
     async def test_quality_score_range(self, agent, retail_df):
         result = await agent.execute(_state(retail_df, "retail"))
         assert 0.0 <= result.quality_score <= 1.0
+
+
+class TestKPIColumnSelection:
+    """KPIs are only computed from columns that actually match."""
+
+    @pytest.mark.asyncio
+    async def test_no_fallback_to_unrelated_columns(self):
+        frame = pd.DataFrame({"id": range(1, 11), "price": [10.0] * 10, "sold_quantity": [2] * 10})
+        state = GraphState(input_dataset_path="x.csv").set("cleaned_data", frame).set("business_domain", "retail")
+        kpis = {k["name"]: k for k in (await KPIDiscoveryAgent().execute(state)).data_updates["discovered_kpis"]}
+
+        assert "Total Revenue" not in kpis  # no revenue-like column
+        assert kpis["Average Price"]["value"] == 10.0
+        assert kpis["Average Price"]["formula"] == "mean(price)"
+        assert kpis["Units Sold"]["value"] == 20.0
+
+    @pytest.mark.asyncio
+    async def test_identifier_columns_never_used(self):
+        frame = pd.DataFrame({"employee_id": range(100, 110), "dept": ["a", "b"] * 5})
+        state = GraphState(input_dataset_path="x.csv").set("cleaned_data", frame).set("business_domain", "hr")
+        kpis = {k["name"] for k in (await KPIDiscoveryAgent().execute(state)).data_updates["discovered_kpis"]}
+        assert "Average Salary" not in kpis
+        assert "Salary Range" not in kpis

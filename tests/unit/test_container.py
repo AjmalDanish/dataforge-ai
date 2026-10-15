@@ -72,7 +72,7 @@ class CounterService:
 class CircularA:
     """Service A that depends on B."""
 
-    def __init__(self, b: CircularB) -> None:
+    def __init__(self, b: "CircularB") -> None:
         self.b = b
 
 

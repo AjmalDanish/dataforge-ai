@@ -307,6 +307,9 @@ class MockFileReader(FileReader):
     async def read(self, file_path: str | Path, **kwargs):
         return None, None
 
+    async def peek_metadata(self, file_path: str | Path):
+        return None
+
     def validate_format(self, file_path: str | Path) -> bool:
         return str(file_path).endswith(".csv")
 

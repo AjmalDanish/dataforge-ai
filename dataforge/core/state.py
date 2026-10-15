@@ -78,7 +78,7 @@ class GraphState(BaseModel):
         default_factory=dict, description="Per-agent invocation count"
     )
     global_step_count: int = Field(0, description="Total steps (loop detection)")
-    max_global_steps: int = Field(35, description="Hard limit")
+    max_global_steps: int = Field(80, description="Hard limit (planner + agents)")
     quality_warnings: list[str] = Field(
         default_factory=list, description="Non-fatal quality issues"
     )

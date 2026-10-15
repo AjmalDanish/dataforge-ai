@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            backend/requirements.txt
+            requirements-dev.txt
+      - name: Install
+        run: pip install -r requirements-dev.txt
+      - name: Lint (syntax errors and undefined names)
+        run: ruff check dataforge backend tests run.py --select E9,F63,F7,F82
+      - name: Test
+        env:
+          DATAFORGE_DISABLE_LLM: "1"
+        run: pytest -q --cov=dataforge --cov-report=term --cov-fail-under=85
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.invalid
+          NEXT_TELEMETRY_DISABLED: "1"
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t dataforge-api .
+      - name: Smoke test
+        run: |
+          docker run -d --name api -p 7860:7860 -e DATAFORGE_DISABLE_LLM=1 dataforge-api
+          for i in $(seq 1 30); do curl -fs localhost:7860/healthz && break; sleep 2; done
+          curl -fs -F file=@datasets/employees.csv localhost:7860/api/analyze
+          docker logs api

@@ -4,7 +4,7 @@ import Link from "next/link";
 export const metadata = {
   title: "DataForge AI — Autonomous BI Engineer",
   description:
-    "Upload a CSV/Excel/Parquet/JSON and get executive KPIs, insights, dashboard and report. Built for Data Scientist / ML roles.",
+    "Upload a CSV/Excel/Parquet/JSON and get executive KPIs, insights, charts and a report from 13 autonomous agents.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -31,7 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
         <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
         <footer className="mx-auto max-w-6xl px-4 py-10 text-center text-xs text-slate-500">
-          Built for Data Scientist / ML roles • Next.js on Netlify + FastAPI on HF Spaces + Neon Postgres • See docs/PRD.md → TRD.md → UI_UX.md → DATABASE.md
+          DataForge AI v2 • Next.js + FastAPI + LangGraph • MIT licensed
         </footer>
       </body>
     </html>

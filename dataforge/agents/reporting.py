@@ -1,6 +1,7 @@
 """Reporting Agent - Generates comprehensive executive analysis reports."""
 
 import json
+from html import escape
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +11,7 @@ from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
 from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
+from dataforge.infrastructure.pdf_report import pdf_available, render_executive_pdf
 
 # Legacy insight severities mapped onto the report CSS classes.
 _SEVERITY_CLASS = {
@@ -23,6 +25,12 @@ _SEVERITY_CLASS = {
 }
 
 
+
+def _e(value: Any) -> str:
+    """HTML-escape a data-derived value (column names and values come from user files)."""
+    return escape(str(value), quote=True)
+
+
 class ReportingAgent(Agent):
     """Generates a comprehensive executive analysis report.
 
@@ -34,9 +42,8 @@ class ReportingAgent(Agent):
     - Visualizations generated (including dashboard + KPI cards)
     - Recommendations for further analysis
 
-    Saves report as both HTML and JSON formats. PDF export is planned
-    (requires an HTML-to-PDF renderer) and reported as unavailable until
-    the dependency lands.
+    Saves the report as HTML and JSON, plus an executive PDF when reportlab
+    is installed (PDF failures never fail the report).
 
     v2 contract: phase OUTPUT, no required inputs (reports on whatever
     exists), outputs ``report``, ``report_html`` and ``report_json``.
@@ -122,7 +129,11 @@ class ReportingAgent(Agent):
 
             # Generate report content
             executive_summary = self._build_executive_summary(
-                business_domain, discovered_kpis, business_insights, raw_data
+                business_domain,
+                discovered_kpis,
+                business_insights,
+                raw_data,
+                state.get("executive_narrative"),
             )
             report_metadata = {
                 "generated_at": datetime.now().isoformat(),
@@ -165,6 +176,21 @@ class ReportingAgent(Agent):
             html_path.write_text(html_report, encoding="utf-8")
             json_path.write_text(json_report, encoding="utf-8")
 
+            pdf_path: Path | None = None
+            if pdf_available():
+                try:
+                    pdf_path = render_executive_pdf(
+                        self.output_dir / "report.pdf",
+                        report_metadata,
+                        executive_summary,
+                        discovered_kpis,
+                        business_insights,
+                    )
+                except Exception as pdf_error:
+                    self.logger.warning(
+                        "PDF generation failed", agent=self.name, error=str(pdf_error)
+                    )
+
             self.logger.info(
                 "Report generation complete",
                 agent=self.name,
@@ -185,8 +211,8 @@ class ReportingAgent(Agent):
                     "report": {
                         "html_path": str(html_path),
                         "json_path": str(json_path),
-                        "pdf_path": None,
-                        "pdf_available": False,
+                        "pdf_path": str(pdf_path) if pdf_path else None,
+                        "pdf_available": pdf_path is not None,
                         "insights_count": len(insights),
                         "business_insights_count": len(business_insights),
                         "visualizations_count": len(visualizations),
@@ -195,6 +221,7 @@ class ReportingAgent(Agent):
                     },
                     "report_html": str(html_path),
                     "report_json": str(json_path),
+                    "report_pdf": str(pdf_path) if pdf_path else None,
                 },
                 metadata={
                     "html_path": str(html_path),
@@ -249,6 +276,7 @@ class ReportingAgent(Agent):
         kpis: list[dict[str, Any]],
         business_insights: list[dict[str, Any]],
         raw_data,
+        narrative: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Build the executive summary payload for HTML and JSON.
 
@@ -284,12 +312,16 @@ class ReportingAgent(Agent):
             headline = f"{domain.title()} data ({rows:,} rows) profiled; no standout findings."
         else:
             headline = "No data available for executive summary."
-        return {
+        summary = {
             "headline": headline,
             "domain": domain,
             "headline_kpis": headline_kpis,
             "top_findings": top_findings,
         }
+        if narrative:
+            summary["narrative"] = narrative.get("narrative", "")
+            summary["recommendations"] = narrative.get("recommendations", [])
+        return summary
 
     def _executive_summary_html(
         self, summary: dict[str, Any], kpis: list[dict[str, Any]]
@@ -305,9 +337,16 @@ class ReportingAgent(Agent):
         """
         html = [
             "        <h2>📌 Executive Summary</h2>",
-            f"        <p><strong>{summary.get('headline', '')}</strong></p>",
+            f"        <p><strong>{_e(summary.get('headline', ''))}</strong></p>",
             "",
         ]
+        if summary.get("narrative"):
+            html.extend([f"        <p>{_e(summary['narrative'])}</p>", ""])
+        if summary.get("recommendations"):
+            html.append("        <h3>Recommended Actions</h3>")
+            html.append("        <ul>")
+            html.extend(f"            <li>{_e(r)}</li>" for r in summary["recommendations"])
+            html.extend(["        </ul>", ""])
         if kpis:
             html.extend(
                 [
@@ -320,8 +359,8 @@ class ReportingAgent(Agent):
                 display = f"{value:,.2f}" if isinstance(value, float) else str(value)
                 trend = kpi.get("trend", "stable")
                 html.append(
-                    f"            <div class='stat-card'><div class='stat-value'>{display}</div>"
-                    f"<div class='stat-label'>{kpi.get('name', 'KPI')} ({trend})</div></div>"
+                    f"            <div class='stat-card'><div class='stat-value'>{_e(display)}</div>"
+                    f"<div class='stat-label'>{_e(kpi.get('name', 'KPI'))} ({_e(trend)})</div></div>"
                 )
             html.extend(["        </div>", ""])
         top = summary.get("top_findings", [])
@@ -329,10 +368,10 @@ class ReportingAgent(Agent):
             html.extend(["        <h3>Top Findings</h3>", "        <ol>"])
             for finding in top:
                 html.append(
-                    f"            <li><strong>{finding.get('title', '')}</strong> — "
-                    f"{finding.get('summary', '')}"
+                    f"            <li><strong>{_e(finding.get('title', ''))}</strong> — "
+                    f"{_e(finding.get('summary', ''))}"
                     + (
-                        f" <em>Action: {finding['action']}</em>"
+                        f" <em>Action: {_e(finding['action'])}</em>"
                         if finding.get("action")
                         else ""
                     )
@@ -424,7 +463,7 @@ class ReportingAgent(Agent):
             if isinstance(value, list):
                 value = ", ".join(str(v) for v in value)
             html.append(
-                f"            <div class='metadata-item'><span class='metadata-label'>{key}:</span> {value}</div>"
+                f"            <div class='metadata-item'><span class='metadata-label'>{_e(key)}:</span> {_e(value)}</div>"
             )
 
         html.extend(
@@ -469,7 +508,7 @@ class ReportingAgent(Agent):
                 for col_name, col_info in columns_info.items():
                     missing_pct = (col_info.get("n_missing", 0) / profile.get("n_rows", 1)) * 100
                     html.append(
-                        f"                <tr><td>{col_name}</td><td>{col_info.get('type', 'unknown')}</td>"
+                        f"                <tr><td>{_e(col_name)}</td><td>{_e(col_info.get('type', 'unknown'))}</td>"
                         f"<td>{col_info.get('n_unique', 0):,}</td><td>{col_info.get('n_missing', 0):,}</td>"
                         f"<td>{missing_pct:.1f}%</td></tr>"
                     )
@@ -505,7 +544,7 @@ class ReportingAgent(Agent):
 
                 for col_name, stats in desc_stats.items():
                     html.append(
-                        f"                <tr><td>{col_name}</td><td>{stats.get('mean', 0):.2f}</td>"
+                        f"                <tr><td>{_e(col_name)}</td><td>{stats.get('mean', 0):.2f}</td>"
                         f"<td>{stats.get('median', 0):.2f}</td><td>{stats.get('std', 0):.2f}</td>"
                         f"<td>{stats.get('min', 0):.2f}</td><td>{stats.get('max', 0):.2f}</td></tr>"
                     )
@@ -531,7 +570,7 @@ class ReportingAgent(Agent):
                 )
 
                 for corr in correlations:
-                    cols_str = " ↔ ".join(corr.get("columns", []))
+                    cols_str = _e(" ↔ ".join(map(str, corr.get("columns", []))))
                     html.append(
                         f"                <tr><td>{cols_str}</td><td>{corr.get('correlation', 0):.3f}</td>"
                         f"<td><span class='tag info'>{corr.get('strength', 'unknown')}</span></td>"
@@ -559,7 +598,7 @@ class ReportingAgent(Agent):
                 )
 
                 for col_name, indices in outliers.items():
-                    html.append(f"            <li>{col_name}: {len(indices)} outliers</li>")
+                    html.append(f"            <li>{_e(col_name)}: {len(indices)} outliers</li>")
 
                 html.extend(
                     [
@@ -584,10 +623,10 @@ class ReportingAgent(Agent):
                 rel_path = f"visualizations/{file_name}"
 
                 html.append(f"            <div class='viz-item'>")
-                html.append(f"                <strong>{title}</strong><br>")
-                html.append(f"                <span class='tag info'>{viz_type}</span><br>")
+                html.append(f"                <strong>{_e(title)}</strong><br>")
+                html.append(f"                <span class='tag info'>{_e(viz_type)}</span><br>")
                 html.append(
-                    f"                <a href='{rel_path}' class='viz-link' target='_blank'>View Visualization</a>"
+                    f"                <a href='{_e(rel_path)}' class='viz-link' target='_blank'>View Visualization</a>"
                 )
                 html.append(f"            </div>")
 
@@ -616,14 +655,14 @@ class ReportingAgent(Agent):
                 insights_by_type[insight_type].append(insight)
 
             for insight_type, type_insights in insights_by_type.items():
-                html.append(f"        <h3>{insight_type.replace('_', ' ').title()}</h3>")
+                html.append(f"        <h3>{_e(str(insight_type).replace('_', ' ').title())}</h3>")
 
                 for insight in type_insights:
                     severity = insight.get("severity", "info")
                     message = insight.get("message", "")
-                    html.append(f"        <div class='insight {severity}'>")
-                    html.append(f"            <div class='insight-type'>{insight_type}</div>")
-                    html.append(f"            <div>{message}</div>")
+                    html.append(f"        <div class='insight {_e(severity)}'>")
+                    html.append(f"            <div class='insight-type'>{_e(insight_type)}</div>")
+                    html.append(f"            <div>{_e(message)}</div>")
                     html.append(f"        </div>")
 
             html.append(f"        <p><strong>Total Insights:</strong> {len(insights)}</p>")
@@ -651,7 +690,7 @@ class ReportingAgent(Agent):
 
                 html.append(
                     f"                <tr><td>{timestamp.split('T')[1][:8] if 'T' in timestamp else timestamp}</td>"
-                    f"<td><span class='tag {tag_class}'>{level}</span></td><td>{agent}</td><td>{message}</td></tr>"
+                    f"<td><span class='tag {tag_class}'>{_e(level)}</span></td><td>{_e(agent)}</td><td>{_e(message)}</td></tr>"
                 )
 
             html.extend(

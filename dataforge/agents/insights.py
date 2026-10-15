@@ -1,31 +1,42 @@
 """InsightGenerationAgent — The Storyteller (v2 contract).
 
 Synthesizes profile, statistics, KPIs and domain context into ranked,
-business-grade insights. Rule-based core (always works offline); LLM
-narrative synthesis is a future extension point.
+business-grade insights. Rule-based core (always works offline); when an
+LLM provider is injected, it also writes an executive narrative and
+prioritized recommendations grounded in those rule-based findings.
 
 Frozen contract (docs/v2/AGENTS.md §11):
 - Phase: 6 — Synthesis
 - Inputs: ``cleaned_data`` (+ optional ``profile``, ``statistics``,
   ``discovered_kpis``, ``business_domain``, ``business_objectives``)
-- Outputs: ``business_insights``
+- Outputs: ``business_insights`` (+ ``executive_narrative`` when an LLM is set)
 - Retry: 2
 - Failure: SKIP (report generates without narrative)
 - Timeout: 45s
 - LLM: optional (rule-based synthesis is the default path)
 """
 
+import json
 from typing import Any
 
 import pandas as pd
 
 from dataforge.agents.base import Agent, AgentDecision, AgentResult
-from dataforge.core.llm import LLMProvider
+from dataforge.core.llm import LLMMessage, LLMProvider
 from dataforge.core.logger import StructuredLogger
 from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
 
 __all__ = ["InsightGenerationAgent"]
+
+
+def _fmt_number(value: Any) -> str:
+    """Thousands separators; integers (and integral floats) without decimals."""
+    if isinstance(value, (int, float)) and float(value).is_integer():
+        return f"{int(value):,}"
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    return str(value)
 
 
 class InsightGenerationAgent(Agent):
@@ -36,7 +47,7 @@ class InsightGenerationAgent(Agent):
     produced_outputs: list[str] = ["business_insights"]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
     failure_policy: FailurePolicy = FailurePolicy.SKIP
-    timeout_seconds: int = 45
+    timeout_seconds: int = 240
 
     MAX_INSIGHTS: int = 10
 
@@ -95,19 +106,97 @@ class InsightGenerationAgent(Agent):
             insights.append(recommendation)
             insights = insights[: self.MAX_INSIGHTS]
 
+        data_updates: dict[str, Any] = {"business_insights": insights}
+        narrative = await self._llm_narrative(domain, df, kpis, insights) if insights else None
+        if narrative:
+            data_updates["executive_narrative"] = narrative
+
         quality = round(min(len(insights) / 5, 1.0), 3)
         return AgentResult(
             decision=AgentDecision.CONTINUE,
-            message=f"Generated {len(insights)} business insights for domain '{domain}'",
-            data_updates={"business_insights": insights},
+            message=f"Generated {len(insights)} business insights for domain '{domain}'"
+            + (" with LLM narrative" if narrative else ""),
+            data_updates=data_updates,
             metadata={
                 "domain": domain,
                 "insight_count": len(insights),
                 "categories": sorted({i["category"] for i in insights}),
+                "llm_narrative": bool(narrative),
             },
             quality_score=quality,
             execution_notes=[i["title"] for i in insights],
         )
+
+    # -- LLM narrative ---------------------------------------------------
+    NARRATIVE_SYSTEM_PROMPT: str = (
+        "You are a senior business analyst writing for executives. You receive "
+        "findings that were computed from a dataset. Use only those findings; "
+        "never invent numbers. Reply with a single JSON object and nothing else: "
+        '{"narrative": "<3-5 sentence executive summary>", '
+        '"recommendations": ["<specific action>", ...]} with at most 4 recommendations.'
+    )
+
+    async def _llm_narrative(
+        self,
+        domain: str,
+        df: pd.DataFrame,
+        kpis: list[dict[str, Any]],
+        insights: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Ask the LLM for an executive narrative; None when unavailable or invalid."""
+        if self.llm is None:
+            return None
+        facts = {
+            "domain": domain,
+            "rows": len(df),
+            "columns": list(map(str, df.columns))[:50],
+            "kpis": [
+                {"name": k.get("name"), "value": k.get("value"), "trend": k.get("trend")}
+                for k in kpis[:8]
+            ],
+            "findings": [
+                {
+                    "title": i.get("title"),
+                    "summary": i.get("summary"),
+                    "severity": i.get("severity"),
+                }
+                for i in insights[:8]
+            ],
+        }
+        try:
+            response = await self.llm.generate_with_retry(
+                [
+                    LLMMessage(role="system", content=self.NARRATIVE_SYSTEM_PROMPT),
+                    LLMMessage(role="user", content=json.dumps(facts, default=str)),
+                ],
+                max_retries=1,
+            )
+            return self._parse_narrative(response.content)
+        except Exception as e:
+            if self.logger:
+                self.logger.warning(
+                    "LLM narrative unavailable, using rule-based summary",
+                    agent=self.name,
+                    error=str(e),
+                )
+            return None
+
+    @staticmethod
+    def _parse_narrative(text: str) -> dict[str, Any] | None:
+        start, end = text.find("{"), text.rfind("}")
+        if start == -1 or end <= start:
+            return None
+        try:
+            payload = json.loads(text[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+        narrative = payload.get("narrative")
+        if not isinstance(narrative, str) or not narrative.strip():
+            return None
+        recommendations = [
+            r.strip() for r in payload.get("recommendations") or [] if isinstance(r, str) and r.strip()
+        ][:4]
+        return {"narrative": narrative.strip(), "recommendations": recommendations}
 
     # -- insight builders ------------------------------------------------
     def _make(
@@ -203,22 +292,23 @@ class InsightGenerationAgent(Agent):
             trend = (kpi.get("trend") or "stable").lower()
             if value is None:
                 continue
+            shown = _fmt_number(value)
             if trend == "increasing":
                 category, severity = "trends", "medium"
-                summary = f"{name} is trending up (current: {value:.2f}). Momentum is positive."
+                summary = f"{name} is trending up (current: {shown}). Momentum is positive."
                 action = f"Double down on what is driving {name} upward."
             elif trend == "decreasing":
                 category, severity = "risks", "high"
-                summary = f"{name} is trending down (current: {value:.2f}). This needs attention."
+                summary = f"{name} is trending down (current: {shown}). This needs attention."
                 action = f"Investigate the decline in {name} before it compounds."
             else:
                 category, severity = "top_performers", "medium"
-                summary = f"{name} stands at {value:.2f} for {domain} data."
+                summary = f"{name} stands at {shown} for {domain} data."
                 action = f"Benchmark {name} against prior periods to confirm the baseline."
             out.append(
                 self._make(
                     category=category,
-                    title=f"{name}: {value:.2f}",
+                    title=f"{name}: {shown}",
                     summary=summary,
                     supporting_data={
                         "kpi": name,

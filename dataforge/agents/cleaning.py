@@ -19,6 +19,7 @@ from dataforge.core.models import (
     RetryPolicy,
 )
 from dataforge.core.state import GraphState
+from dataforge.shared.utils import parse_dates_if_mostly_dates
 
 from .base import Agent, AgentDecision, AgentResult
 
@@ -67,7 +68,7 @@ class DataCleaningAgent(Agent):
     ]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
     failure_policy: FailurePolicy = FailurePolicy.HALT
-    timeout_seconds: int = 60
+    timeout_seconds: int = 120
 
     # Cleaning thresholds (not Pydantic fields - just configuration)
     missing_value_threshold: float = 0.7  # Drop column if >70% missing
@@ -254,11 +255,13 @@ class DataCleaningAgent(Agent):
         Returns:
             MD5 checksum as hex string.
         """
-        # Sort columns to ensure consistent checksum
-        df_sorted = df[sorted(df.columns)].copy()
-        # Convert to string and hash
-        df_str = df_sorted.to_string().encode("utf-8")
-        return hashlib.md5(df_str).hexdigest()
+        # Sort columns for a column-order-independent checksum, then hash the
+        # vectorised per-row hashes (rendering the frame as text is O(minutes)
+        # on large data).
+        df_sorted = df[sorted(df.columns, key=str)]
+        digest = hashlib.md5("|".join(map(str, df_sorted.columns)).encode("utf-8"))
+        digest.update(pd.util.hash_pandas_object(df_sorted, index=True).values.tobytes())
+        return digest.hexdigest()
 
     def _handle_duplicate_columns(self, df: pd.DataFrame) -> tuple[pd.DataFrame, list[CleaningRule]]:
         """Handle duplicate columns.
@@ -522,10 +525,10 @@ class DataCleaningAgent(Agent):
             # Try to convert to datetime
             if pd.api.types.is_object_dtype(df_clean[col]) or pd.api.types.is_string_dtype(df_clean[col]):
                 try:
-                    # Try datetime conversion
-                    date_col = pd.to_datetime(df_clean[col], errors="coerce")
-                    # Check if conversion was successful (not all NaT)
-                    if not date_col.isnull().all():
+                    # Convert only when most values are dates; otherwise the
+                    # non-date values would be silently replaced with NaT.
+                    date_col = parse_dates_if_mostly_dates(df_clean[col])
+                    if date_col is not None:
                         df_clean[col] = date_col
                         rules.append(
                             CleaningRule(

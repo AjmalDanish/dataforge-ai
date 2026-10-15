@@ -73,7 +73,7 @@ class TestSchemaDetectionAgentInit:
         assert len(agent.produced_outputs) == 16
         assert agent.retry_policy.max_retries == 2
         assert agent.failure_policy.name == "SKIP"
-        assert agent.timeout_seconds == 30
+        assert agent.timeout_seconds == 120
 
     def test_agent_thresholds(self, agent):
         """Test detection thresholds."""

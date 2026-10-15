@@ -194,3 +194,9 @@ backend/alembic/versions/*.py
 !backend/alembic/versions/.gitkeep
 .env.local
 DATABASE_URL.local
+# DataForge runtime artifacts
+backend/uploads/
+backend/outputs/
+backend/last_run_id*.txt
+backend/tunnel*.txt
+backend/tunnel.log

@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { API_URL, getHistory } from "@/lib/api";
+import { API_URL, Status, getHistory } from "@/lib/api";
 
 export default function HistoryPage() {
-  const [runs, setRuns] = useState<any[]>([]);
+  const [runs, setRuns] = useState<Status[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -17,7 +17,7 @@ export default function HistoryPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-bold">History</h1>
-      <p className="text-sm text-slate-400">Recent runs on {API_URL} • Private to this backend volume (resets on redeploy in MVP)</p>
+      <p className="text-sm text-slate-400">Recent runs on {API_URL} • stored on the API server's disk</p>
       {err && <div className="rounded border border-red-900 bg-red-950 px-4 py-3 text-sm text-red-200">{err}</div>}
       <div className="overflow-x-auto rounded border border-slate-800">
         <table className="w-full text-left text-sm">

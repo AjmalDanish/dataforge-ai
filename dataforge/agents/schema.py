@@ -20,6 +20,7 @@ from dataforge.core.models import (
     SchemaInfo,
 )
 from dataforge.core.state import GraphState
+from dataforge.shared.utils import parse_dates_if_mostly_dates
 
 from .base import Agent, AgentDecision, AgentResult
 
@@ -92,7 +93,7 @@ class SchemaDetectionAgent(Agent):
     ]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
     failure_policy: FailurePolicy = FailurePolicy.SKIP
-    timeout_seconds: int = 30
+    timeout_seconds: int = 120
 
     # Detection thresholds
     high_cardinality_threshold: int = 50
@@ -496,10 +497,7 @@ class SchemaDetectionAgent(Agent):
             return False
 
         try:
-            pd.to_datetime(non_null, errors="coerce")
-            # Check if at least 80% parsed successfully
-            parsed = pd.to_datetime(non_null, errors="coerce")
-            return parsed.notna().sum() / len(non_null) >= 0.8
+            return parse_dates_if_mostly_dates(non_null) is not None
         except Exception:
             return False
 

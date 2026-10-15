@@ -23,6 +23,7 @@ from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
 from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
 from dataforge.core.state import GraphState
+from dataforge.shared.utils import is_identifier_column
 
 __all__ = ["KPIDiscoveryAgent"]
 
@@ -35,7 +36,7 @@ class KPIDiscoveryAgent(Agent):
     produced_outputs: list[str] = ["discovered_kpis"]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
     failure_policy: FailurePolicy = FailurePolicy.SKIP
-    timeout_seconds: int = 30
+    timeout_seconds: int = 60
 
     # KPI templates per domain. Each spec:
     #   kind: row_count | column_sum | column_mean | column_max |
@@ -49,7 +50,7 @@ class KPIDiscoveryAgent(Agent):
                 "description": "Sum of revenue across all orders",
                 "formula": "sum(revenue)",
                 "kind": "column_sum",
-                "column": ["revenue", "sales", "total", "amount", "price"],
+                "column": ["revenue", "sales", "amount", "total"],
                 "unit": "currency",
             },
             {
@@ -58,8 +59,26 @@ class KPIDiscoveryAgent(Agent):
                 "description": "Mean revenue per order",
                 "formula": "mean(revenue)",
                 "kind": "column_mean",
-                "column": ["revenue", "sales", "total", "amount", "price"],
+                "column": ["revenue", "sales", "amount", "total"],
                 "unit": "currency",
+            },
+            {
+                "name": "Average Price",
+                "abbreviation": "AVG_PRICE",
+                "description": "Mean unit price",
+                "formula": "mean(price)",
+                "kind": "column_mean",
+                "column": ["price", "unit_price", "cost"],
+                "unit": "currency",
+            },
+            {
+                "name": "Units Sold",
+                "abbreviation": "UNITS",
+                "description": "Total units sold",
+                "formula": "sum(quantity)",
+                "kind": "column_sum",
+                "column": ["sold_quantity", "units_sold", "quantity", "qty", "units"],
+                "unit": "count",
             },
             {
                 "name": "Order Count",
@@ -182,8 +201,8 @@ class KPIDiscoveryAgent(Agent):
         _bd = state.get("business_domain") or "general"
         domain = (_bd.value if hasattr(_bd, "value") else str(_bd)).lower()
         templates = self.DOMAIN_TEMPLATES.get(domain, self.DOMAIN_TEMPLATES["general"])
-        # Always include the generic row-count KPI for comparability.
-        if domain != "general":
+        # Include the generic row-count KPI unless the domain already counts rows.
+        if domain != "general" and not any(t["kind"] == "row_count" for t in templates):
             templates = templates + self.DOMAIN_TEMPLATES["general"]
 
         temporal_col = self._find_temporal_column(df)
@@ -198,12 +217,17 @@ class KPIDiscoveryAgent(Agent):
                 continue
             succeeded += 1
             trend = self._trend(df, spec, temporal_col)
+            column = self._find_column(df, spec.get("column", [])) if spec.get("column") else None
+            formula = spec.get("formula", "")
+            if column is not None and "(" in formula and spec.get("kind") != "ratio":
+                formula = f"{formula.split('(')[0]}({column})"
             kpis.append(
                 {
                     "name": spec["name"],
                     "abbreviation": spec.get("abbreviation"),
                     "description": spec.get("description", ""),
-                    "formula": spec.get("formula", ""),
+                    "formula": formula,
+                    "column": column,
                     "value": value,
                     "unit": spec.get("unit"),
                     "trend": trend,
@@ -227,13 +251,17 @@ class KPIDiscoveryAgent(Agent):
 
     # -- helpers ---------------------------------------------------------
     def _find_column(self, df: pd.DataFrame, keywords: list[str]) -> str | None:
-        cols = {c.lower(): c for c in df.columns}
+        """First column whose name contains a keyword (identifier columns excluded).
+
+        Returns None when nothing matches: a KPI computed from an unrelated
+        column (e.g. "Average Salary" over ``id``) is worse than no KPI.
+        """
+        cols = {str(c).lower(): c for c in df.columns if not is_identifier_column(c)}
         for kw in keywords:
             for lowered, original in cols.items():
                 if kw in lowered:
                     return original
-        numeric = df.select_dtypes(include="number").columns.tolist()
-        return numeric[0] if numeric else None
+        return None
 
     def _find_temporal_column(self, df: pd.DataFrame) -> str | None:
         for col in df.columns:

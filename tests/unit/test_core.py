@@ -50,7 +50,7 @@ class TestGraphState:
         assert state.agent_history == []
         assert state.agent_visit_count == {}
         assert state.global_step_count == 0
-        assert state.max_global_steps == 35
+        assert state.max_global_steps == 80
         assert state.quality_warnings == []
         assert state.quality_errors == []
         assert isinstance(state.data, dict)
@@ -147,7 +147,7 @@ class TestGraphState:
         assert state.should_continue() is True
 
         # Simulate reaching max steps
-        state = state.model_copy(update={"global_step_count": 35})
+        state = state.model_copy(update={"global_step_count": state.max_global_steps})
         assert state.should_continue() is False
 
     def test_get_agent_visit_count(self) -> None:

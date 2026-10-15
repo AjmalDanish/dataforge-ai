@@ -28,3 +28,45 @@ if OpenAIProvider is not None:
     __all__.append("OpenAIProvider")
 if AnthropicProvider is not None:
     __all__.append("AnthropicProvider")
+
+
+def llm_from_env():
+    """Build an LLM provider from environment variables, or None if unconfigured.
+
+    ``LLM_PROVIDER`` picks the vendor (``anthropic`` | ``openai``); when unset,
+    the first vendor with an API key wins (Anthropic first). ``LLM_MODEL``
+    overrides the vendor's default model. ``DATAFORGE_DISABLE_LLM=1`` forces
+    the deterministic (rule-based) path.
+    """
+    import os
+
+    from dataforge.core.llm import LLMConfig
+
+    if os.getenv("DATAFORGE_DISABLE_LLM", "").strip() in ("1", "true", "yes"):
+        return None
+
+    keys = {
+        "anthropic": os.getenv("ANTHROPIC_API_KEY", "").strip(),
+        "openai": os.getenv("OPENAI_API_KEY", "").strip(),
+    }
+    defaults = {"anthropic": "claude-opus-5-5", "openai": "gpt-4o"}
+    provider = os.getenv("LLM_PROVIDER", "").strip().lower()
+    if not provider:
+        provider = next((name for name, key in keys.items() if key), "")
+    if provider not in keys or not keys[provider] or not LLMProviderFactory.is_registered(provider):
+        return None
+
+    config = LLMConfig(
+        provider=provider,
+        model=os.getenv("LLM_MODEL", "").strip() or defaults[provider],
+        api_key=keys[provider],
+        max_tokens=int(os.getenv("LLM_MAX_TOKENS", "16000")),
+        timeout=int(os.getenv("LLM_TIMEOUT", "120")),
+    )
+    try:
+        return LLMProviderFactory.create(config)
+    except Exception:
+        return None
+
+
+__all__.append("llm_from_env")

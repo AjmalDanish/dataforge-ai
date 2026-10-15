@@ -41,9 +41,10 @@ def kpis():
 
 
 @pytest.fixture
-def state(df, kpis):
+def state(df, kpis, tmp_path):
     return GraphState(
         input_dataset_path="/test/data.csv",
+        output_dir=str(tmp_path),
         current_phase=ExecutionPhase.OUTPUT,
         data={
             "cleaned_data": df,
@@ -116,8 +117,8 @@ class TestExecutiveReport:
         agent = ReportingAgent(logger=logger, output_dir=str(tmp_path / "report"))
         result = await agent.execute(state)
         assert result.decision == AgentDecision.CONTINUE
-        assert (tmp_path / "report" / "report.html").exists()
-        assert (tmp_path / "report" / "report.json").exists()
+        assert (tmp_path / "report.html").exists()
+        assert (tmp_path / "report.json").exists()
         assert result.data_updates["report_html"].endswith("report.html")
         assert result.data_updates["report_json"].endswith("report.json")
 
@@ -126,7 +127,7 @@ class TestExecutiveReport:
         logger = StructuredLogger("test-report", tmp_path)
         agent = ReportingAgent(logger=logger, output_dir=str(tmp_path / "report"))
         await agent.execute(state)
-        html = (tmp_path / "report" / "report.html").read_text(encoding="utf-8")
+        html = (tmp_path / "report.html").read_text(encoding="utf-8")
         assert "Executive Summary" in html
         assert "Total Revenue" in html
         assert "Revenue is climbing" in html
@@ -136,7 +137,20 @@ class TestExecutiveReport:
         logger = StructuredLogger("test-report", tmp_path)
         agent = ReportingAgent(logger=logger, output_dir=str(tmp_path / "report"))
         await agent.execute(state)
-        report = json.loads((tmp_path / "report" / "report.json").read_text())
+        report = json.loads((tmp_path / "report.json").read_text())
         assert report["executive_summary"]["headline"]
         assert len(report["kpis"]) == 1
         assert len(report["business_insights"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_identifier_columns_are_not_charted(tmp_path):
+    frame = pd.DataFrame({"order_id": range(1, 21), "revenue": [float(i * 3 % 17) for i in range(20)], "qty": [i % 5 for i in range(20)]})
+    state = GraphState(
+        input_dataset_path="/x.csv",
+        output_dir=str(tmp_path),
+        data={"cleaned_data": frame, "profile": {"numeric_columns": ["order_id", "revenue", "qty"], "categorical_columns": []}},
+    )
+    result = await VisualizationAgent(logger=StructuredLogger("t", tmp_path)).execute(state)
+    names = [v["file_name"] for v in result.data_updates["visualizations"]]
+    assert names and not any("order_id" in n for n in names)

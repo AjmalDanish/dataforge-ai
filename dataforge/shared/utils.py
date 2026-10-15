@@ -117,3 +117,44 @@ def deep_update(dict1: dict[str, Any], dict2: dict[str, Any]) -> dict[str, Any]:
         else:
             result[key] = value
     return result
+
+
+def is_identifier_column(name: object) -> bool:
+    """Whether a column name looks like a record identifier (``id``, ``order_id``...).
+
+    Identifier columns are numeric but carry no measurement, so statistics,
+    charts and KPIs over them are noise.
+    """
+    lowered = str(name).strip().lower()
+    return lowered == "id" or lowered.endswith(("_id", " id", "-id")) or lowered.startswith("id_")
+
+
+def analytic_columns(columns: list) -> list:
+    """Drop identifier columns from a list of numeric column names."""
+    return [c for c in columns if not is_identifier_column(c)]
+
+
+def parse_dates_if_mostly_dates(series, threshold: float = 0.8, sample_size: int = 200):
+    """Parse ``series`` as datetimes when at least ``threshold`` of non-null values parse.
+
+    Checks a small sample first so non-date text columns are rejected without
+    parsing every value (per-element dateutil parsing is very slow on large
+    frames). Returns the parsed series, or None when the column is not dates.
+    """
+    import warnings
+
+    import pandas as pd
+
+    non_null = series.dropna()
+    if non_null.empty:
+        return None
+    with warnings.catch_warnings():
+        # Mixed/unknown formats fall back to per-element parsing; expected here.
+        warnings.simplefilter("ignore", UserWarning)
+        sample = non_null.head(sample_size)
+        if pd.to_datetime(sample, errors="coerce").notna().mean() < threshold:
+            return None
+        parsed = pd.to_datetime(series, errors="coerce")
+    if parsed[series.notna()].notna().mean() < threshold:
+        return None
+    return parsed

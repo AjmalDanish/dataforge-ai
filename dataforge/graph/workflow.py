@@ -1,4 +1,16 @@
-"""LangGraph workflow for DataForge AI."""
+"""LangGraph workflow for DataForge AI.
+
+The graph is a hub-and-spoke DAG: every agent node returns to the planner,
+and the planner's ``next_agent_suggestion`` picks the next node through a
+conditional edge (see ``PlannerAgent`` for the routing rules).
+
+Use :func:`run_workflow` to execute an analysis; it owns the recursion limit
+and streams one event per agent step to an optional callback (the API uses
+this for live WebSocket progress).
+"""
+
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from langgraph.graph import END, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -7,7 +19,6 @@ from dataforge.agents import (
     BusinessDomainDetectionAgent,
     BusinessObjectiveDetectionAgent,
     DataCleaningAgent,
-    DataIngestionAgent,
     DataProfilingAgent,
     DataValidationAgent,
     EvaluatorAgent,
@@ -20,221 +31,172 @@ from dataforge.agents import (
     StatisticalAnalysisAgent,
     VisualizationAgent,
 )
+from dataforge.agents.base import Agent
+from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
 from dataforge.core.state import GraphState
 
-__all__ = ["create_graph", "route_from_planner"]
+__all__ = [
+    "AGENT_NODES",
+    "RECURSION_LIMIT",
+    "create_graph",
+    "route_from_planner",
+    "run_workflow",
+]
+
+# Agent class name → graph node name.
+AGENT_NODES: dict[str, str] = {
+    "DataValidationAgent": "validation",
+    "DataCleaningAgent": "cleaning",
+    "SchemaDetectionAgent": "schema",
+    "BusinessDomainDetectionAgent": "domain",
+    "BusinessObjectiveDetectionAgent": "objective",
+    "DataProfilingAgent": "profiling",
+    "FeatureEngineeringAgent": "features",
+    "KPIDiscoveryAgent": "kpi",
+    "StatisticalAnalysisAgent": "statistics",
+    "InsightGenerationAgent": "insights",
+    "VisualizationAgent": "visualization",
+    "EvaluatorAgent": "evaluator",
+    "ReportingAgent": "reporting",
+}
+
+# LangGraph counts every node visit (planner included). The planner's own
+# ``max_global_steps`` budget (80) ends the run well before this limit.
+RECURSION_LIMIT = 200
+
+EventCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 def route_from_planner(state: GraphState) -> str:
-    """Route to next agent based on planner's decision.
-
-    Args:
-        state: Current graph state.
-
-    Returns:
-        Next node name.
-    """
-    # Mapping from agent names to node names
-    agent_to_node = {
-        "DataIngestionAgent": "ingestion",
-        "DataValidationAgent": "validation",
-        "DataCleaningAgent": "cleaning",
-        "SchemaDetectionAgent": "schema",
-        "BusinessDomainDetectionAgent": "domain",
-        "BusinessObjectiveDetectionAgent": "objective",
-        "DataProfilingAgent": "profiling",
-        "ProfilingAgent": "profiling",
-        "FeatureEngineeringAgent": "features",
-        "KPIDiscoveryAgent": "kpi",
-        "InsightGenerationAgent": "insights",
-        "StatisticalAnalysisAgent": "statistics",
-        "VisualizationAgent": "visualization",
-        "EvaluatorAgent": "evaluator",
-        "ReportingAgent": "reporting",
-    }
-
-    # Get the most recent agent result (v1 dict entries or v2 objects)
-    if state.agent_history:
-        last = state.agent_history[-1]
-        if isinstance(last, dict):
-            last_result = last["result"]
-        else:
-            last_result = (last.metadata or {}).get("result", {})
-            if not last_result and last.decision:
-                last_result = {"decision": last.decision}
-        decision = last_result.get("decision")
-
-        if decision == "complete":
-            return END
-
-        next_agent = last_result.get("next_agent_suggestion")
-        if next_agent:
-            return agent_to_node.get(next_agent, END)
-
-    # Default fallback
-    return END
+    """Route to the node the planner suggested (or END)."""
+    if not state.agent_history:
+        return END
+    last = state.agent_history[-1]
+    if isinstance(last, dict):
+        result = last.get("result", {})
+    else:
+        result = (last.metadata or {}).get("result", {})
+        if not result and last.decision:
+            result = {"decision": last.decision}
+    if result.get("decision") == "complete":
+        return END
+    next_agent = result.get("next_agent_suggestion")
+    return AGENT_NODES.get(next_agent, END) if next_agent else END
 
 
-def create_graph() -> CompiledStateGraph:
+def _agent_node(agent: Agent) -> Callable[[GraphState], Awaitable[GraphState]]:
+    async def node(state: GraphState) -> GraphState:
+        _, new_state = await agent.execute_with_logging(state)
+        return new_state
+
+    node.__name__ = f"{agent.name}_node"
+    return node
+
+
+def create_graph(
+    llm_provider: LLMProvider | None = None,
+    logger: StructuredLogger | None = None,
+) -> CompiledStateGraph:
     """Create the analysis workflow graph.
 
+    Args:
+        llm_provider: Optional LLM provider for the LLM-assisted agents
+            (domain tie-breaking, objectives, executive narrative). Without it
+            every agent runs its deterministic rule-based path.
+        logger: Optional structured logger shared by all agents.
+
     Returns:
-        Compiled StateGraph (CompiledStateGraph with ainvoke/invoke/stream support).
+        Compiled StateGraph (supports ``ainvoke`` / ``astream``).
     """
-    workflow = StateGraph(GraphState)
-
-    # Create agent instances
-    logger = StructuredLogger("workflow", "./output")
+    logger = logger or StructuredLogger("workflow", "./output")
+    agents: list[Agent] = [
+        DataValidationAgent(logger=logger),
+        DataCleaningAgent(logger=logger),
+        SchemaDetectionAgent(logger=logger),
+        BusinessDomainDetectionAgent(llm_provider=llm_provider, logger=logger),
+        BusinessObjectiveDetectionAgent(llm_provider=llm_provider, logger=logger),
+        DataProfilingAgent(logger=logger),
+        FeatureEngineeringAgent(logger=logger),
+        KPIDiscoveryAgent(logger=logger),
+        StatisticalAnalysisAgent(logger=logger),
+        InsightGenerationAgent(llm_provider=llm_provider, logger=logger),
+        VisualizationAgent(logger=logger),
+        EvaluatorAgent(logger=logger),
+        ReportingAgent(logger=logger),
+    ]
+    phases = {agent.name: int(agent.phase) for agent in agents}
     planner = PlannerAgent(logger=logger)
-    evaluator = EvaluatorAgent(logger=logger)
-    ingestion = DataIngestionAgent(logger=logger)
-    validation = DataValidationAgent(logger=logger)
-    cleaning = DataCleaningAgent(logger=logger)
-    schema = SchemaDetectionAgent(logger=logger)
-    domain = BusinessDomainDetectionAgent(logger=logger)
-    objective = BusinessObjectiveDetectionAgent(logger=logger)
-    profiling = DataProfilingAgent(logger=logger)
-    features = FeatureEngineeringAgent(logger=logger)
-    kpi = KPIDiscoveryAgent(logger=logger)
-    insights = InsightGenerationAgent(logger=logger)
-    statistics = StatisticalAnalysisAgent(logger=logger)
-    visualization = VisualizationAgent(logger=logger)
-    reporting = ReportingAgent(logger=logger)
 
-    # Define node functions that call agents
     async def planner_node(state: GraphState) -> GraphState:
-        """Planner node."""
         result, new_state = await planner.execute_with_logging(state)
+        # Track the phase of the agent about to run (drives UI progress).
+        phase = phases.get(result.next_agent_suggestion or "")
+        if phase is not None and phase != new_state.current_phase:
+            new_state = new_state.update_phase(phase)
         return new_state
 
-    async def evaluator_node(state: GraphState) -> GraphState:
-        """Evaluator node."""
-        result, new_state = await evaluator.execute_with_logging(state)
-        return new_state
-
-    async def ingestion_node(state: GraphState) -> GraphState:
-        """Ingestion node."""
-        result, new_state = await ingestion.execute_with_logging(state)
-        return new_state
-
-    async def validation_node(state: GraphState) -> GraphState:
-        """Validation node (v2 entry)."""
-        result, new_state = await validation.execute_with_logging(state)
-        return new_state
-
-    async def cleaning_node(state: GraphState) -> GraphState:
-        """Cleaning node."""
-        result, new_state = await cleaning.execute_with_logging(state)
-        return new_state
-
-    async def schema_node(state: GraphState) -> GraphState:
-        """Schema detection node."""
-        result, new_state = await schema.execute_with_logging(state)
-        return new_state
-
-    async def domain_node(state: GraphState) -> GraphState:
-        """Business domain detection node."""
-        result, new_state = await domain.execute_with_logging(state)
-        return new_state
-
-    async def objective_node(state: GraphState) -> GraphState:
-        """Business objective detection node."""
-        result, new_state = await objective.execute_with_logging(state)
-        return new_state
-
-    async def features_node(state: GraphState) -> GraphState:
-        """Feature engineering node."""
-        result, new_state = await features.execute_with_logging(state)
-        return new_state
-
-    async def kpi_node(state: GraphState) -> GraphState:
-        """KPI discovery node."""
-        result, new_state = await kpi.execute_with_logging(state)
-        return new_state
-
-    async def insights_node(state: GraphState) -> GraphState:
-        """Insight generation node."""
-        result, new_state = await insights.execute_with_logging(state)
-        return new_state
-
-    async def profiling_node(state: GraphState) -> GraphState:
-        """Profiling node."""
-        result, new_state = await profiling.execute_with_logging(state)
-        return new_state
-
-    async def statistics_node(state: GraphState) -> GraphState:
-        """Statistics node."""
-        result, new_state = await statistics.execute_with_logging(state)
-        return new_state
-
-    async def visualization_node(state: GraphState) -> GraphState:
-        """Visualization node."""
-        result, new_state = await visualization.execute_with_logging(state)
-        return new_state
-
-    async def reporting_node(state: GraphState) -> GraphState:
-        """Reporting node."""
-        result, new_state = await reporting.execute_with_logging(state)
-        return new_state
-
-    # Add nodes
+    workflow = StateGraph(GraphState)
     workflow.add_node("planner", planner_node)
-    workflow.add_node("ingestion", ingestion_node)
-    workflow.add_node("validation", validation_node)
-    workflow.add_node("cleaning", cleaning_node)
-    workflow.add_node("schema", schema_node)
-    workflow.add_node("domain", domain_node)
-    workflow.add_node("objective", objective_node)
-    workflow.add_node("profiling", profiling_node)
-    workflow.add_node("features", features_node)
-    workflow.add_node("kpi", kpi_node)
-    workflow.add_node("insights", insights_node)
-    workflow.add_node("statistics", statistics_node)
-    workflow.add_node("visualization", visualization_node)
-    workflow.add_node("evaluator", evaluator_node)
-    workflow.add_node("reporting", reporting_node)
+    for agent in agents:
+        workflow.add_node(AGENT_NODES[agent.name], _agent_node(agent))
+        workflow.add_edge(AGENT_NODES[agent.name], "planner")
 
-    # Set entry point
     workflow.set_entry_point("planner")
-
-    # Add conditional edges from planner
     workflow.add_conditional_edges(
         "planner",
         route_from_planner,
-        {
-            "ingestion": "ingestion",
-            "validation": "validation",
-            "cleaning": "cleaning",
-            "schema": "schema",
-            "domain": "domain",
-            "objective": "objective",
-            "profiling": "profiling",
-            "features": "features",
-            "kpi": "kpi",
-            "insights": "insights",
-            "statistics": "statistics",
-            "visualization": "visualization",
-            "evaluator": "evaluator",
-            "reporting": "reporting",
-            END: END,
-        },
+        {**{node: node for node in AGENT_NODES.values()}, END: END},
     )
-
-    # All agents return to planner (except reporting which goes to END)
-    workflow.add_edge("ingestion", "planner")
-    workflow.add_edge("validation", "planner")
-    workflow.add_edge("cleaning", "planner")
-    workflow.add_edge("schema", "planner")
-    workflow.add_edge("domain", "planner")
-    workflow.add_edge("objective", "planner")
-    workflow.add_edge("profiling", "planner")
-    workflow.add_edge("features", "planner")
-    workflow.add_edge("kpi", "planner")
-    workflow.add_edge("insights", "planner")
-    workflow.add_edge("statistics", "planner")
-    workflow.add_edge("visualization", "planner")
-    workflow.add_edge("evaluator", "planner")
-    workflow.add_edge("reporting", END)
-
     return workflow.compile()
+
+
+def _as_state(value: Any) -> GraphState:
+    return value if isinstance(value, GraphState) else GraphState.model_validate(value)
+
+
+async def run_workflow(
+    state: GraphState,
+    llm_provider: LLMProvider | None = None,
+    on_event: EventCallback | None = None,
+    logger: StructuredLogger | None = None,
+) -> GraphState:
+    """Run a full analysis and return the final state.
+
+    Args:
+        state: Initial state (``input_dataset_path`` and ``output_dir`` set).
+        llm_provider: Optional LLM provider (see :func:`create_graph`).
+        on_event: Optional async callback, called once per agent step with
+            ``{"type": "agent", "agent", "decision", "success", "message",
+            "duration_s", "phase", "step"}``. Planner steps are not reported.
+        logger: Optional structured logger.
+    """
+    logger = logger or StructuredLogger(state.execution_id, state.output_dir)
+    graph = create_graph(llm_provider=llm_provider, logger=logger)
+    final = state
+    seen = len(state.agent_history)
+    async for value in graph.astream(
+        state, {"recursion_limit": RECURSION_LIMIT}, stream_mode="values"
+    ):
+        final = _as_state(value)
+        new_entries = final.agent_history[seen:]
+        seen = len(final.agent_history)
+        if on_event is None:
+            continue
+        for entry in new_entries:
+            if entry.agent_name == "PlannerAgent":
+                continue
+            result = (entry.metadata or {}).get("result", {})
+            await on_event(
+                {
+                    "type": "agent",
+                    "agent": entry.agent_name,
+                    "decision": entry.decision,
+                    "success": bool(result.get("success", True)),
+                    "message": entry.message or result.get("error", ""),
+                    "duration_s": round(entry.duration_seconds or 0.0, 3),
+                    "phase": final.current_phase,
+                    "step": final.global_step_count,
+                }
+            )
+    return final.mark_complete()
