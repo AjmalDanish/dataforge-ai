@@ -16,9 +16,9 @@ services:
         value: "25"
       - key: MAX_CONCURRENT_RUNS
         value: "1"
-      # Comma-separated allowed origins; "*" until the frontend URL is final.
+      # Comma-separated allowed CORS origins (production frontend + local dev).
       - key: FRONTEND_URL
-        value: "*"
+        value: "https://dataforge-ai-two.vercel.app,http://localhost:3000"
       # Optional: enables the LLM-written executive summary (Render prompts for the value).
       - key: ANTHROPIC_API_KEY
         sync: false

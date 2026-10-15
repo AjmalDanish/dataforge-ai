@@ -2,6 +2,8 @@
 
 > Autonomous business intelligence engine: upload a dataset, and 13 graph-orchestrated agents turn it into KPIs, ranked insights, charts and an executive report.
 
+**Live demo:** https://dataforge-ai-two.vercel.app (API: https://dataforge-api-purm.onrender.com/docs — free tier, the first request after idling takes ~1 min)
+
 ![Python](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Tests](https://img.shields.io/badge/tests-711%20passing-brightgreen.svg)
