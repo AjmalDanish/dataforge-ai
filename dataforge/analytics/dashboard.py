@@ -78,6 +78,11 @@ def infer_model(df: pd.DataFrame) -> dict[str, Any]:
         if c != date_col and _parse_time_of_day(df[c]) is not None:
             time_col = c
             break
+    # A date is a transaction timeline only if events repeat per day; one row per
+    # date (product launch dates, birthdays) would make "period over period" nonsense.
+    # ponytail: rows-per-date heuristic; add name hints if real data defeats it.
+    if date_col is not None and not time_col and n <= df[date_col].nunique(dropna=True) * 1.0:
+        date_col = None
 
     numeric = [
         c for c in cols
@@ -146,9 +151,11 @@ def prepare_frame(df: pd.DataFrame, model: dict[str, Any]) -> pd.DataFrame:
 
 def options(model: dict[str, Any], df: pd.DataFrame | None = None) -> dict[str, Any]:
     """Controls a user (or the LLM) may choose from."""
-    kpis = ["revenue", "orders", "aov", "units"] if model["money"] else ["records"]
-    if not model["money"] and model["order_key"]:
-        kpis.append("orders")
+    # Orders and average order value only exist when there is an order key.
+    if model["money"]:
+        kpis = ["revenue", "orders", "aov", "units"] if model["order_key"] else ["revenue", "units"]
+    else:
+        kpis = ["records", "orders"] if model["order_key"] else ["records"]
     filters: dict[str, list[str]] = {}
     if df is not None:
         for d in model["dimensions"]:
@@ -181,8 +188,6 @@ def _metric_frame(g: pd.core.groupby.DataFrameGroupBy, model: dict[str, Any]) ->
     out = g.agg(**agg)
     if "revenue" in out and "orders" in out:
         out["aov"] = out["revenue"] / out["orders"].replace(0, np.nan)
-    elif "revenue" in out:
-        out["aov"] = out["revenue"] / out["records"].replace(0, np.nan)
     return out
 
 
@@ -192,8 +197,8 @@ def _totals(df: pd.DataFrame, model: dict[str, Any]) -> dict[str, float]:
         t["revenue"] = float(df["_revenue"].sum())
     if model["order_key"]:
         t["orders"] = float(df[model["order_key"]].nunique())
-    if "revenue" in t:
-        t["aov"] = t["revenue"] / (t.get("orders") or t["records"] or np.nan)
+    if "revenue" in t and t.get("orders"):
+        t["aov"] = t["revenue"] / t["orders"]
     return t
 
 

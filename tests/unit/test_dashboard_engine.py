@@ -82,3 +82,20 @@ def test_grounding(pizza):
     assert is_grounded(f"Revenue reached {revenue / 1000:.1f}K.", fs)
     assert not is_grounded("Revenue grew 47.3% to $9,999,999.", fs)
     assert numbers_in("1.2M and 12.5% and $3,400") == [1_200_000, 12.5, 3400]
+
+
+def test_catalog_data_has_no_fake_orders_or_timeline():
+    """One row per product with a launch date: no orders/AOV, no period-over-period."""
+    df = pd.DataFrame({
+        "product_name": [f"p{i}" for i in range(20)],
+        "category": ["a", "b"] * 10,
+        "price": [10.0 + i for i in range(20)],
+        "sold_quantity": [5] * 20,
+        "launch_date": pd.date_range("2024-01-01", periods=20, freq="15D").strftime("%Y-%m-%d"),
+    })
+    m = infer_model(df)
+    assert m["date"] is None and m["order_key"] is None
+    d = build_dashboard(df, m)
+    assert [t["key"] for t in d["kpis"]] == ["revenue", "units"]
+    assert d["kpis"][0]["value"] == round(float((df.price * df.sold_quantity).sum()), 2)
+    assert d["trend"] == [] and "change_pct" not in d["kpis"][0]

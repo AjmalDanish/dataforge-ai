@@ -70,7 +70,8 @@ class TestKPIExecute:
         kpis = result.data_updates["discovered_kpis"]
         names = {k["name"] for k in kpis}
         # Revenue/orders come from the semantic model (dataforge.analytics.dashboard).
-        assert {"Revenue", "Avg order value", "Units sold"} <= names
+        assert {"Revenue", "Units sold"} <= names
+        assert "Avg order value" not in names  # no order key -> no AOV
         rev = next(k for k in kpis if k["name"] == "Revenue")
         assert rev["value"] == pytest.approx(1500.0)
         assert rev["formula"] == "sum(revenue)"
