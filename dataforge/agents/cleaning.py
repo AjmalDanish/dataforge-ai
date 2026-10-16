@@ -636,8 +636,10 @@ class DataCleaningAgent(Agent):
 
         for col in df_clean.columns:
             if pd.api.types.is_object_dtype(df_clean[col]) or pd.api.types.is_string_dtype(df_clean[col]):
-                # Check if column contains strings with mixed case
-                if df_clean[col].apply(lambda x: isinstance(x, str)).any():
+                # Only lowercase when it merges spelling variants ("Retail"/"retail");
+                # otherwise it just destroys real labels ("L" sizes, names, codes).
+                lowered = df_clean[col].dropna().astype(str).str.lower()
+                if lowered.nunique() < df_clean[col].dropna().astype(str).nunique():
                     # Convert to lowercase
                     original_values = df_clean[col].copy()
                     df_clean[col] = df_clean[col].apply(

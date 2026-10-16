@@ -473,9 +473,9 @@ class TestDataCleaningAgentCaseNormalization:
     """Tests for case normalization."""
 
     def test_normalize_case(self, agent: DataCleaningAgent) -> None:
-        """Test case normalization."""
+        """Case variants of the same value are merged."""
         df = pd.DataFrame({
-            "col1": ["ALICE", "Bob", "CHARLIE"],
+            "col1": ["Retail", "retail", "RETAIL", "Finance"],
         })
 
         df_clean, rules = agent._normalize_case(df)
@@ -483,7 +483,16 @@ class TestDataCleaningAgentCaseNormalization:
         assert len(rules) == 1
         assert rules[0].rule_type == "case_normalization"
         assert rules[0].action == "lowercase"
-        assert df_clean["col1"].iloc[0] == "alice"
+        assert df_clean["col1"].nunique() == 2
+
+    def test_distinct_labels_keep_their_case(self, agent: DataCleaningAgent) -> None:
+        """Lowercasing distinct labels (sizes, names) only destroys information."""
+        df = pd.DataFrame({"size": ["S", "M", "L", "XL"], "name": ["ALICE", "Bob", "CHARLIE", "Dee"]})
+
+        df_clean, rules = agent._normalize_case(df)
+
+        assert rules == []
+        assert df_clean.equals(df)
 
     def test_normalize_no_case_needed(self, agent: DataCleaningAgent) -> None:
         """Test with no case normalization needed."""

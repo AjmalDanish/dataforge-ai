@@ -4,6 +4,9 @@ Endpoints (see /docs for the OpenAPI schema):
 
     POST   /api/analyze                       upload a dataset (sign-in required)
     POST   /api/samples/{name}                analyze a bundled sample (anonymous OK)
+    POST   /api/runs/{run_id}/refine          new dashboard version from controls / text (owner)
+    POST   /api/runs/{run_id}/approve         approve a version; re-renders the PDF (owner)
+    GET    /api/runs/{run_id}/versions/{n}    one dashboard version
     GET    /api/status/{run_id}               progress (phase, completed agents, events)
     GET    /api/results/{run_id}              KPIs, insights, narrative, report links
     GET    /api/download/{run_id}/{fmt}?t=    report as html | json | pdf
@@ -49,6 +52,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from dotenv import load_dotenv
 
@@ -58,7 +62,10 @@ load_dotenv(BASE_DIR.parent / ".env")  # repo-root .env, if present (real env va
 
 from dataforge import __version__ as APP_VERSION  # noqa: E402
 from dataforge.core.state import GraphState  # noqa: E402
+from dataforge.analytics.dashboard import build_dashboard, infer_model, options  # noqa: E402
 from dataforge.graph.workflow import run_workflow  # noqa: E402
+from dataforge.infrastructure.pdf_report import render_executive_pdf  # noqa: E402
+from dataforge.llm.brief import generate_brief, interpret_refinement, make_lm  # noqa: E402
 from dataforge.infrastructure.llm_providers import llm_from_env  # noqa: E402
 from security import (  # noqa: E402
     RateLimiter,
@@ -107,6 +114,7 @@ PUBLIC_FIELDS = (
     "duration_s",
     "error",
     "llm",
+    "approved_version",
 )
 # Also persisted, never listed publicly: who owns the run and its share token.
 PERSISTED_FIELDS = PUBLIC_FIELDS + ("owner", "share_token")
@@ -224,6 +232,94 @@ async def _broadcast(run_id: str, payload: dict[str, Any]) -> None:
                 conns.remove(ws)
 
 
+def _versions_dir(run_id: str) -> Path:
+    return OUTPUT_ROOT / run_id / "versions"
+
+
+def _read_version(run_id: str, n: int) -> dict[str, Any]:
+    path = _versions_dir(run_id) / f"v{n}.json"
+    if not path.is_file():
+        raise _error(404, "not_found", "Version not found", f"No version {n}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _list_versions(run_id: str) -> list[dict[str, Any]]:
+    docs = sorted(
+        (json.loads(f.read_text(encoding="utf-8")) for f in _versions_dir(run_id).glob("v*.json")),
+        key=lambda d: d["version"],
+    ) if _versions_dir(run_id).exists() else []
+    return [
+        {k: d.get(k) for k in ("version", "kind", "created_at", "instructions")}
+        | {"headline": (d.get("brief") or {}).get("headline"), "spec": d["dashboard"]["version_spec"]}
+        for d in docs
+    ]
+
+
+def _write_version(run_id: str, doc: dict[str, Any]) -> dict[str, Any]:
+    folder = _versions_dir(run_id)
+    folder.mkdir(parents=True, exist_ok=True)
+    doc = {**doc, "version": len(list(folder.glob("v*.json"))) + 1, "created_at": _now_iso()}
+    (folder / f"v{doc['version']}.json").write_text(json.dumps(doc, default=str), encoding="utf-8")
+    return doc
+
+
+class RefineRequest(BaseModel):
+    kpis: list[str] | None = None
+    dimensions: list[str] | None = None
+    grain: str | None = None
+    filters: dict[str, list[str]] | None = None
+    instructions: str | None = None
+
+
+class ApproveRequest(BaseModel):
+    version: int
+
+
+def _refine_version(run_id: str, domain: str, base_spec: dict[str, Any], body: RefineRequest) -> dict[str, Any]:
+    """New dashboard version: explicit controls > LLM-parsed text > the version it builds on."""
+    import pandas as pd
+
+    df = pd.read_parquet(OUTPUT_ROOT / run_id / "cleaned.parquet")
+    model = infer_model(df)
+    lm = make_lm()
+    instructions = (body.instructions or "").strip()
+    intent = interpret_refinement(instructions, options(model, df), lm)
+    focus = intent.pop("focus", "") or instructions
+    explicit = {k: v for k, v in body.model_dump(exclude={"instructions"}).items() if v}
+    dashboard = build_dashboard(df, model, {**base_spec, **intent, **explicit})
+    return _write_version(run_id, {
+        "kind": "refined",
+        "instructions": instructions or None,
+        "dashboard": dashboard,
+        "brief": generate_brief(dashboard, domain, focus=focus, lm=lm),
+    })
+
+
+def _render_version_pdf(run_id: str, rec: dict[str, Any], doc: dict[str, Any]) -> None:
+    dash, brief = doc["dashboard"], doc.get("brief") or {}
+    trend = lambda c: "stable" if c is None or abs(c) <= 1 else f"{'+' if c > 0 else ''}{c}% vs prior"  # noqa: E731
+    render_executive_pdf(
+        OUTPUT_ROOT / run_id / "report.pdf",
+        {
+            "business_domain": rec.get("business_domain") or "general",
+            "total_rows": dash.get("rows_in_view", 0),
+            "total_columns": len(dash["model"]["dimensions"]) + 2,
+            "generated_at": _now_iso(),
+        },
+        {
+            "headline": f"{brief.get('headline', '')} (dashboard v{doc['version']}, approved)",
+            "narrative": brief.get("summary", ""),
+            "recommendations": [r["action"] for r in brief.get("recommendations", [])],
+        },
+        [{"name": t["label"], "value": t["value"], "trend": trend(t.get("change_pct"))} for t in dash["kpis"]],
+        [
+            {"title": f["title"], "summary": f["so_what"],
+             "severity": {"down": "high", "up": "medium"}.get(f["direction"], "low")}
+            for f in brief.get("findings", [])
+        ],
+    )
+
+
 def _snapshot(final: GraphState, duration_s: float) -> dict[str, Any]:
     """JSON-safe results payload written to results.json."""
     report = final.get("report") or {}
@@ -233,6 +329,7 @@ def _snapshot(final: GraphState, duration_s: float) -> dict[str, Any]:
         "discovered_kpis": final.get("discovered_kpis") or [],
         "business_insights": final.get("business_insights") or [],
         "executive_narrative": final.get("executive_narrative"),
+        "executive_brief": final.get("executive_brief"),
         "business_objectives": final.get("business_objectives") or [],
         "evaluation": final.get("evaluation"),
         "dashboard": final.get("dashboard") or {},
@@ -275,6 +372,13 @@ async def _run_analysis(run_id: str, upload_path: Path, output_dir: Path) -> Non
             (output_dir / "results.json").write_text(
                 json.dumps(snapshot, indent=2, default=str, ensure_ascii=False), encoding="utf-8"
             )
+            if final.get("dashboard"):
+                _write_version(run_id, {
+                    "kind": "original",
+                    "instructions": None,
+                    "dashboard": final.get("dashboard"),
+                    "brief": final.get("executive_brief"),
+                })
             done = "ReportingAgent" in snapshot["steps_completed"]
             async with RUNS_LOCK:
                 rec.update(
@@ -470,6 +574,10 @@ async def get_results(
         "objectives": snapshot.get("business_objectives") or [],
         "evaluation": snapshot.get("evaluation"),
         "dashboard": snapshot.get("dashboard") or {},
+        "brief": snapshot.get("executive_brief"),
+        "versions": _list_versions(run_id),
+        "approved_version": rec.get("approved_version"),
+        "llm_available": llm_from_env() is not None,
         "report_urls": reports,
         "report_view_url": f"{files}/report.html" if reports["html"] else None,
         "charts": [{"name": c, "url": f"{files}/visualizations/{c}"} for c in charts],
@@ -508,6 +616,45 @@ async def run_file(run_id: str, t: str, file_path: str) -> FileResponse:
     if not allowed or not target.is_relative_to(root) or not target.is_file():
         raise _error(404, "artifact_missing", "Artifact not found", file_path)
     return FileResponse(str(target))
+
+
+async def _owned_run(run_id: str, user: User | None) -> dict[str, Any]:
+    rec = await _readable_run(run_id, user, None)  # 404 unless the caller owns it
+    if rec["status"] != "done":
+        raise _error(409, "not_ready", "Not ready", "Run not done yet")
+    return rec
+
+
+@app.get("/api/runs/{run_id}/versions/{n}")
+async def get_version(
+    run_id: str, n: int, t: str | None = None, user: User | None = Depends(optional_user)
+) -> dict[str, Any]:
+    await _readable_run(run_id, user, t)
+    return _read_version(run_id, n)
+
+
+@app.post("/api/runs/{run_id}/refine", status_code=201)
+async def refine(run_id: str, body: RefineRequest, user: User = Depends(require_user)) -> dict[str, Any]:
+    rec = await _owned_run(run_id, user)
+    if not (OUTPUT_ROOT / run_id / "cleaned.parquet").is_file():
+        raise _error(409, "not_refinable", "Cannot refine", "This run has no saved data to refine")
+    LIMITER.check(f"user:{user.id}", USER_RUNS_PER_HOUR)
+    versions = _list_versions(run_id)
+    base = _read_version(run_id, versions[-1]["version"])["dashboard"]["version_spec"] if versions else {}
+    return await asyncio.to_thread(
+        _refine_version, run_id, rec.get("business_domain") or "general", base, body
+    )
+
+
+@app.post("/api/runs/{run_id}/approve")
+async def approve(run_id: str, body: ApproveRequest, user: User = Depends(require_user)) -> dict[str, Any]:
+    rec = await _owned_run(run_id, user)
+    doc = _read_version(run_id, body.version)
+    await asyncio.to_thread(_render_version_pdf, run_id, rec, doc)
+    async with RUNS_LOCK:
+        rec["approved_version"] = body.version
+        _persist(rec)
+    return {"run_id": run_id, "approved_version": body.version}
 
 
 @app.get("/api/history")

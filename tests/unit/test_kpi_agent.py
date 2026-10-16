@@ -69,11 +69,11 @@ class TestKPIExecute:
         assert result.decision == AgentDecision.CONTINUE
         kpis = result.data_updates["discovered_kpis"]
         names = {k["name"] for k in kpis}
-        assert "Total Revenue" in names
-        assert "Average Order Value" in names
-        assert "Order Count" in names
-        rev = next(k for k in kpis if k["name"] == "Total Revenue")
+        # Revenue/orders come from the semantic model (dataforge.analytics.dashboard).
+        assert {"Revenue", "Avg order value", "Units sold"} <= names
+        rev = next(k for k in kpis if k["name"] == "Revenue")
         assert rev["value"] == pytest.approx(1500.0)
+        assert rev["formula"] == "sum(revenue)"
         assert rev["trend"] in ("increasing", "decreasing", "stable")
 
     @pytest.mark.asyncio
@@ -115,10 +115,12 @@ class TestKPIColumnSelection:
         state = GraphState(input_dataset_path="x.csv").set("cleaned_data", frame).set("business_domain", "retail")
         kpis = {k["name"]: k for k in (await KPIDiscoveryAgent().execute(state)).data_updates["discovered_kpis"]}
 
-        assert "Total Revenue" not in kpis  # no revenue-like column
+        # price x quantity is revenue; the index-like "id" is never used.
+        assert kpis["Revenue"]["value"] == 200.0
+        assert kpis["Revenue"]["formula"] == "sum(price * sold_quantity)"
+        assert kpis["Units sold"]["value"] == 20.0
         assert kpis["Average Price"]["value"] == 10.0
         assert kpis["Average Price"]["formula"] == "mean(price)"
-        assert kpis["Units Sold"]["value"] == 20.0
 
     @pytest.mark.asyncio
     async def test_identifier_columns_never_used(self):
@@ -127,3 +129,13 @@ class TestKPIColumnSelection:
         kpis = {k["name"] for k in (await KPIDiscoveryAgent().execute(state)).data_updates["discovered_kpis"]}
         assert "Average Salary" not in kpis
         assert "Salary Range" not in kpis
+
+
+@pytest.mark.asyncio
+async def test_exported_index_columns_never_feed_kpis():
+    # "Unnamed: 0" contains the keyword "name" — it must not become "Unique Products".
+    frame = pd.DataFrame({"Unnamed: 0": range(1, 13), "product_name": ["a", "b", "c"] * 4, "price": [5.0] * 12})
+    state = GraphState(input_dataset_path="x.csv").set("cleaned_data", frame).set("business_domain", "retail")
+    kpis = {k["name"]: k for k in (await KPIDiscoveryAgent().execute(state)).data_updates["discovered_kpis"]}
+    assert kpis["Unique Products"]["value"] == 3
+    assert "Unnamed" not in kpis["Unique Products"]["formula"]

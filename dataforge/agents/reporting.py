@@ -175,6 +175,13 @@ class ReportingAgent(Agent):
             html_path.write_text(html_report, encoding="utf-8")
             json_path.write_text(json_report, encoding="utf-8")
 
+            # Keep the cleaned data so the dashboard can be refined without re-running.
+            if raw_data is not None:
+                try:
+                    raw_data.to_parquet(self.output_dir / "cleaned.parquet", index=False)
+                except Exception as save_error:
+                    self.logger.warning("Could not save cleaned.parquet", agent=self.name, error=str(save_error))
+
             pdf_path: Path | None = None
             if pdf_available():
                 try:

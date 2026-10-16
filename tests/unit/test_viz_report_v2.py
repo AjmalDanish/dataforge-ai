@@ -79,7 +79,7 @@ class TestVisualizationDashboard:
         )
         result = await agent.execute(state)
         assert result.decision == AgentDecision.CONTINUE
-        dashboard = result.data_updates["dashboard"]
+        dashboard = result.data_updates["chart_layout"]
         assert dashboard["kpi_cards"]
         assert dashboard["trend_chart"] is not None
         assert len(dashboard["layout"]) >= 2

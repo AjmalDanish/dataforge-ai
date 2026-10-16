@@ -52,7 +52,7 @@ class VisualizationAgent(Agent):
 
     phase: ExecutionPhase = ExecutionPhase.OUTPUT
     required_inputs: list[str] = ["cleaned_data"]
-    produced_outputs: list[str] = ["visualizations", "dashboard"]
+    produced_outputs: list[str] = ["visualizations", "chart_layout"]
     retry_policy: RetryPolicy = RetryPolicy(max_retries=2)
     failure_policy: FailurePolicy = FailurePolicy.SKIP
     timeout_seconds: int = 90
@@ -101,7 +101,7 @@ class VisualizationAgent(Agent):
             return AgentResult(
                 decision=AgentDecision.SKIP,
                 message="No data available for visualization",
-                data_updates={"visualizations": [], "dashboard": {}},
+                data_updates={"visualizations": [], "chart_layout": {}},
                 quality_score=0.0,
                 execution_notes=["missing cleaned_data and raw_data"],
             )
@@ -110,7 +110,7 @@ class VisualizationAgent(Agent):
             return AgentResult(
                 decision=AgentDecision.SKIP,
                 message="Empty dataset provided for visualization",
-                data_updates={"visualizations": [], "dashboard": {}},
+                data_updates={"visualizations": [], "chart_layout": {}},
                 quality_score=0.0,
                 execution_notes=["empty dataset"],
             )
@@ -213,7 +213,7 @@ class VisualizationAgent(Agent):
                 f"{len(kpi_cards)} KPI cards",
                 data_updates={
                     "visualizations": visualizations,
-                    "dashboard": dashboard,
+                    "chart_layout": dashboard,
                     "insights": state.get("insights", []) + insights,
                 },
                 metadata={

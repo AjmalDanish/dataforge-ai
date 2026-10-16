@@ -159,14 +159,32 @@ class TestEndToEndWorkflow:
         assert "ReportingAgent" in final.steps_completed
 
     @pytest.mark.asyncio
-    async def test_llm_provider_drives_domain_and_narrative(self, tmp_path):
-        llm = FakeLLM()
+    async def test_llm_provider_drives_domain_and_brief(self, tmp_path, monkeypatch):
+        dspy = pytest.importorskip("dspy")
+        from dspy.utils import DummyLM
+
+        brief = {"brief": {
+            "headline": "29 records analysed",
+            "summary": "Revenue is concentrated in electronics.",
+            "findings": [{"title": "Volume is steady", "kpi": "Records", "direction": "flat",
+                          "so_what": "No single period dominates."}],
+            "recommendations": [{"action": "Restock top sellers", "rationale": "Protect availability.",
+                                 "priority": "high", "kpi": "Records"},
+                                {"action": "Review furniture pricing", "rationale": "Margins vary.",
+                                 "priority": "medium", "kpi": "Records"}],
+            "risks": [],
+        }}
+        monkeypatch.setenv("DATAFORGE_LLM_CACHE_DIR", str(tmp_path / "llm_cache"))
+        monkeypatch.setattr(
+            "dataforge.agents.insights.make_lm", lambda: DummyLM([brief], adapter=dspy.JSONAdapter())
+        )
         csv = "a,b,c\n" + "\n".join(f"{i},{i * 3},{i % 4}" for i in range(1, 30))
-        final = await _run(tmp_path, csv, llm_provider=llm)
+        final = await _run(tmp_path, csv, llm_provider=FakeLLM())
 
         # Rule-based detection has no signal here, so the LLM breaks the tie.
         assert final.get("business_domain") == "retail"
         assert final.get("domain_detection_method") == "llm"
+        assert final.get("executive_brief")["source"] == "llm"
         assert final.get("executive_narrative")["recommendations"] == [
             "Restock top sellers",
             "Review furniture pricing",

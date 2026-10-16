@@ -7,7 +7,8 @@ extension; this rule-based core always works offline.
 Frozen contract (docs/v2/AGENTS.md §9):
 - Phase: 4 — Deep Analysis
 - Inputs: ``cleaned_data`` (+ optional ``profile``, ``business_domain``)
-- Outputs: ``discovered_kpis``
+- Outputs: ``discovered_kpis``, ``dashboard`` (executive dashboard, see
+  ``dataforge.analytics.dashboard``), ``semantic_model``
 - Retry: 2
 - Failure: SKIP
 - Timeout: 30s
@@ -22,6 +23,7 @@ from dataforge.agents.base import Agent, AgentDecision, AgentResult
 from dataforge.core.llm import LLMProvider
 from dataforge.core.logger import StructuredLogger
 from dataforge.core.models import ExecutionPhase, FailurePolicy, RetryPolicy
+from dataforge.analytics.dashboard import build_dashboard, infer_model
 from dataforge.core.state import GraphState
 from dataforge.shared.utils import is_identifier_column
 
@@ -205,6 +207,20 @@ class KPIDiscoveryAgent(Agent):
         if domain != "general" and not any(t["kind"] == "row_count" for t in templates):
             templates = templates + self.DOMAIN_TEMPLATES["general"]
 
+        # The semantic model knows which columns mean revenue / orders, so its KPIs
+        # (with period-over-period change) lead and replace less accurate templates.
+        updates: dict[str, Any] = {}
+        try:
+            model = infer_model(df)
+            dashboard = build_dashboard(df, model)
+            updates.update(dashboard=dashboard, semantic_model=model)
+        except Exception as e:  # never lose the template KPIs over a dashboard problem
+            model = dashboard = None
+            self.logger.warning("Dashboard build failed", agent=self.name, error=str(e))
+        if model:
+            # Exported row numbers ("Unnamed: 0", "X") must never feed a KPI.
+            df = df.drop(columns=model["dropped_index_columns"])
+
         temporal_col = self._find_temporal_column(df)
         kpis: list[dict[str, Any]] = []
         succeeded = 0
@@ -239,17 +255,53 @@ class KPIDiscoveryAgent(Agent):
                 }
             )
 
+        if dashboard and (model["money"] or model["order_key"]):
+            replaced = {"Total Revenue", "Average Order Value", "Order Count", "Row Count", "Units Sold"}
+            kpis = [self._kpi_from_tile(t, model, domain) for t in dashboard["kpis"]] + [
+                k for k in kpis if k["name"] not in replaced
+            ]
+
         quality = round(succeeded / max(len(templates), 1), 3)
         return AgentResult(
             decision=AgentDecision.CONTINUE,
             message=f"Discovered {len(kpis)} KPIs for domain '{domain}'",
-            data_updates={"discovered_kpis": kpis},
+            data_updates={"discovered_kpis": kpis, **updates},
             metadata={"domain": domain, "templates": len(templates), "computed": succeeded},
             quality_score=quality,
             execution_notes=[f"{succeeded}/{len(templates)} templates computed"],
         )
 
     # -- helpers ---------------------------------------------------------
+    @staticmethod
+    def _kpi_from_tile(tile: dict[str, Any], model: dict[str, Any], domain: str) -> dict[str, Any]:
+        money, qty, key = model["money"], model["quantity"], model["order_key"]
+        revenue = f"sum({money})" if model["revenue_is_line_total"] or not qty else f"sum({money} * {qty})"
+        formula = {
+            "revenue": revenue,
+            "orders": f"nunique({key})",
+            "aov": "revenue / orders" if key else "revenue / rows",
+            "units": f"sum({qty})" if qty else "count(rows)",
+            "records": "count(rows)",
+        }[tile["key"]]
+        change = tile.get("change_pct")
+        trend = "stable" if change is None or abs(change) <= 1 else "increasing" if change > 0 else "decreasing"
+        return {
+            "name": tile["label"],
+            "abbreviation": tile["key"].upper(),
+            "description": formula,
+            "formula": formula,
+            "column": money if tile["key"] in ("revenue", "aov") else key,
+            "value": tile["value"],
+            "unit": tile["unit"],
+            "trend": trend,
+            "change_pct": change,
+            "benchmark": None,
+            "is_on_track": None,
+            "metrics": [],
+            "domain": domain,
+            "confidence": 0.95,
+        }
+
     def _find_column(self, df: pd.DataFrame, keywords: list[str]) -> str | None:
         """First column whose name contains a keyword (identifier columns excluded).
 

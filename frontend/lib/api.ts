@@ -70,6 +70,64 @@ export interface Insight {
   confidence?: number;
 }
 
+export interface KpiTile {
+  key: string;
+  label: string;
+  unit: "currency" | "count";
+  value: number | null;
+  current?: number | null;
+  previous?: number | null;
+  change_pct?: number | null;
+  spark?: (number | null)[];
+}
+
+export interface DashboardSpec {
+  kpis: string[];
+  dimensions: string[];
+  grain: string | null;
+  filters: Record<string, string[]>;
+}
+
+export interface Dashboard {
+  version_spec: DashboardSpec;
+  options: { kpis: string[]; dimensions: string[]; grains: string[]; filters: Record<string, string[]> };
+  date_range: [string, string] | null;
+  period: { grain: string | null; current: string | null; previous: string | null };
+  rows_in_view: number;
+  kpis: KpiTile[];
+  trend: Record<string, number | string | null>[];
+  breakdowns: { dimension: string; metric: string; rows: { name: string; value: number; share_pct: number; orders?: number }[] }[];
+  top_items: { dimension: string; rows: Record<string, number | string | null>[] } | null;
+  heatmap: { metric: string; days: string[]; hours: number[]; cells: { day: string; hour: number; value: number }[] } | null;
+}
+
+export interface Brief {
+  headline: string;
+  summary: string;
+  findings: { title: string; kpi: string; direction: "up" | "down" | "flat"; so_what: string }[];
+  recommendations: { action: string; rationale: string; priority: "high" | "medium" | "low"; kpi: string }[];
+  risks: string[];
+  source: "llm" | "rules";
+}
+
+export interface VersionMeta {
+  version: number;
+  kind: "original" | "refined";
+  created_at: string;
+  instructions: string | null;
+  headline: string | null;
+  spec: DashboardSpec;
+}
+
+export interface VersionDoc {
+  version: number;
+  kind: "original" | "refined";
+  created_at: string;
+  instructions: string | null;
+  dashboard: Dashboard;
+  brief: Brief;
+}
+
 export interface Results {
   run_id: string;
   status: RunStatus;
@@ -87,6 +145,11 @@ export interface Results {
   report_view_url: string | null;
   charts: { name: string; url: string }[];
   counts: { kpis: number; insights: number; visualizations: number };
+  dashboard: Dashboard | Record<string, never>;
+  brief: Brief | null;
+  versions: VersionMeta[];
+  approved_version: number | null;
+  llm_available: boolean;
   trace: { steps_completed: string[]; steps_skipped: string[] };
 }
 
@@ -158,4 +221,36 @@ export async function getResults(runId: string, share: Token, token: Token) {
 export async function getHistory(token: Token, limit = 20) {
   const r = await fetch(`${API_URL}/api/history?limit=${limit}`, { cache: "no-store", headers: headers(token) });
   return json<{ runs: Status[]; count: number }>(r, "History");
+}
+
+export interface RefineRequest {
+  kpis?: string[];
+  dimensions?: string[];
+  grain?: string | null;
+  filters?: Record<string, string[]>;
+  instructions?: string;
+}
+
+export async function refine(runId: string, body: RefineRequest, getToken: () => Promise<Token>) {
+  await wakeApi();
+  const r = await fetch(`${API_URL}/api/runs/${runId}/refine`, {
+    method: "POST",
+    headers: { ...headers(await getToken()), "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return json<VersionDoc>(r, "Refine");
+}
+
+export async function approve(runId: string, version: number, getToken: () => Promise<Token>) {
+  const r = await fetch(`${API_URL}/api/runs/${runId}/approve`, {
+    method: "POST",
+    headers: { ...headers(await getToken()), "Content-Type": "application/json" },
+    body: JSON.stringify({ version }),
+  });
+  return json<{ approved_version: number }>(r, "Approve");
+}
+
+export async function getVersion(runId: string, n: number, share: Token, token: Token) {
+  const r = await fetch(withShare(`${API_URL}/api/runs/${runId}/versions/${n}`, share), { cache: "no-store", headers: headers(token) });
+  return json<VersionDoc>(r, "Version");
 }

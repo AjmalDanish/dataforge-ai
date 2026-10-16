@@ -37,6 +37,7 @@ click = ">=8.1"
 python-dotenv = ">=1.0"
 anthropic = ">=1.0"
 openai = ">=1.0"
+dspy = ">=3.4,<4"
 # Optional: web API and the (not yet wired) SQL persistence models
 fastapi = { version = ">=0.110", optional = true }
 uvicorn = { version = ">=0.29", extras = ["standard"], optional = true }

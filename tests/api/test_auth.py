@@ -196,3 +196,41 @@ def test_token_that_expired_during_upload_is_accepted(api):
     rejected = _upload(client, {"Authorization": f"Bearer {stale}"})
     assert rejected.status_code == 401
     assert rejected.json()["detail"]["detail"] == "Your session expired. Please try again."
+
+
+def test_refine_and_approve_versions(api):
+    _, client = api
+    started = _upload(client, auth("user_a")).json()
+    run_id, share = started["run_id"], started["share_token"]
+    assert _wait(client, run_id, headers=auth("user_a"))["status"] == "done"
+
+    results = client.get(f"/api/results/{run_id}", headers=auth("user_a")).json()
+    assert [v["version"] for v in results["versions"]] == [1]
+    assert results["dashboard"]["kpis"] and results["brief"]["source"] == "rules"
+    assert results["approved_version"] is None and results["llm_available"] is False
+
+    # Only the signed-in owner may refine or approve. Filter values come from the
+    # dashboard's own options (the cleaned data), exactly as the UI offers them.
+    north = results["dashboard"]["options"]["filters"]["region"][0]
+    body = {"dimensions": ["region"], "filters": {"region": [north]}, "instructions": "only the north"}
+    assert client.post(f"/api/runs/{run_id}/refine", json=body).status_code == 401
+    assert client.post(f"/api/runs/{run_id}/refine", json=body, headers=auth("user_b")).status_code == 404
+
+    v2 = client.post(f"/api/runs/{run_id}/refine", json=body, headers=auth("user_a"))
+    assert v2.status_code == 201
+    v2 = v2.json()
+    assert v2["version"] == 2 and v2["kind"] == "refined" and v2["instructions"] == "only the north"
+    assert v2["dashboard"]["version_spec"]["filters"] == {"region": [north]}
+    assert v2["dashboard"]["rows_in_view"] == 15
+
+    # Anyone with the share link can view versions; only the owner can approve.
+    assert client.get(f"/api/runs/{run_id}/versions/2?t={share}").json()["version"] == 2
+    assert client.get(f"/api/runs/{run_id}/versions/9?t={share}").status_code == 404
+    assert client.post(f"/api/runs/{run_id}/approve", json={"version": 2}, headers=auth("user_b")).status_code == 404
+
+    pdf_before = client.get(f"/api/download/{run_id}/pdf?t={share}").content
+    approved = client.post(f"/api/runs/{run_id}/approve", json={"version": 2}, headers=auth("user_a"))
+    assert approved.json()["approved_version"] == 2
+    assert client.get(f"/api/download/{run_id}/pdf?t={share}").content != pdf_before
+    final = client.get(f"/api/results/{run_id}?t={share}").json()
+    assert final["approved_version"] == 2 and len(final["versions"]) == 2

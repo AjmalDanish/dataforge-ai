@@ -13,6 +13,7 @@ import {
   wsUrl,
 } from "@/lib/api";
 import { useApiToken } from "@/lib/auth";
+import ExecutiveDashboard from "./Dashboard";
 
 const PHASES = ["Intake", "Prep", "Understand", "Deep analysis", "Statistics", "Synthesis", "Output"];
 const PIPELINE: { phase: number; agents: string[] }[] = [
@@ -223,8 +224,10 @@ export default function RunPage() {
   const doneCount = Object.values(states).filter((s) => s === "done").length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    // Flex + order: once results exist they render right below the title; the
+    // live agent graph and activity log follow as technical detail.
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-3" style={{ order: -2 }}>
         <div>
           <h1 className="font-mono text-xl font-bold">Run {id?.slice(0, 8)}</h1>
           <p className="text-sm text-slate-400">
@@ -287,7 +290,7 @@ export default function RunPage() {
       )}
 
       {results && (
-        <div className="space-y-4">
+        <div className="space-y-4" style={{ order: -1 }}>
           <section className="rounded-xl border border-emerald-800 bg-emerald-950/40 p-4">
             <h2 className="font-semibold text-emerald-200">
               Analysis complete ✓ {results.duration_s ? `in ${results.duration_s.toFixed(1)}s` : ""} • {results.business_domain} domain
@@ -311,7 +314,16 @@ export default function RunPage() {
             </div>
           </section>
 
-          {results.narrative && (
+          {results.versions?.length > 0 && id && (
+            <ExecutiveDashboard runId={id} results={results} share={share} isOwner={Boolean(status?.is_owner)} />
+          )}
+
+          <details className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-slate-300">
+              Technical details — all KPIs, statistical insights, chart files, execution trace
+            </summary>
+            <div className="mt-4 space-y-4">
+          {!results.versions?.length && results.narrative && (
             <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
               <h2 className="font-semibold">Executive summary</h2>
               <p className="mt-2 text-sm leading-relaxed text-slate-200">{results.narrative.narrative}</p>
@@ -330,7 +342,7 @@ export default function RunPage() {
 
           {results.kpis.length > 0 && (
             <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-              <h2 className="font-semibold">KPIs</h2>
+              <h2 className="font-semibold">All KPIs</h2>
               <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {results.kpis.map((k) => (
                   <div key={k.name} className="rounded border border-slate-800 bg-slate-950 p-3">
@@ -345,7 +357,7 @@ export default function RunPage() {
 
           {results.insights.length > 0 && (
             <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-              <h2 className="font-semibold">Insights</h2>
+              <h2 className="font-semibold">Statistical insights</h2>
               <ol className="mt-3 space-y-3 text-sm">
                 {results.insights.map((ins, i) => (
                   <li key={i} className="rounded border border-slate-800 bg-slate-950 p-3">
@@ -364,7 +376,7 @@ export default function RunPage() {
 
           {results.charts.length > 0 && (
             <section className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-              <h2 className="font-semibold">Charts</h2>
+              <h2 className="font-semibold">Chart files</h2>
               <div className="mt-3 flex flex-wrap gap-2">
                 {results.charts.map((c) => (
                   <button
@@ -384,6 +396,8 @@ export default function RunPage() {
             <h2 className="font-semibold">Execution trace</h2>
             <p className="mt-2 font-mono text-xs text-slate-400">{results.trace.steps_completed.map(shortName).join(" → ")}</p>
           </section>
+            </div>
+          </details>
         </div>
       )}
 

@@ -123,6 +123,24 @@ Identifier columns (`id`, `order_id`, …) are excluded from statistics, charts 
 
 ---
 
+## Executive dashboard
+
+Every run produces an executive dashboard (`dataforge/analytics/dashboard.py`), computed entirely in pandas:
+
+- **Semantic model**: works out which columns mean *revenue* (a money column, × quantity when there is one), *orders* (distinct order IDs), *date/time* and *dimensions*, and drops exported row-number columns.
+- **KPI tiles** (revenue, orders, average order value, units) with the latest period vs the previous one and a sparkline; a trend chart; breakdowns by dimension with share %; a top-10 table; a day × hour demand heatmap.
+- **Executive brief**: headline, summary, findings, prioritized actions and risks.
+- **Review step**: the owner either **approves** a version (which re-renders the PDF from it) or **refines** it with controls (KPIs, breakdowns, time grain, filters such as weekend-only) and/or a plain-English request. Every refinement is saved as a new version, and the original is kept.
+
+### Consistent AI output (DSPy)
+
+With an LLM key, the brief and the plain-English refinements go through [DSPy](https://dspy.ai) (`dataforge/llm/brief.py`):
+
+- **Typed signatures**: fixed fields, at most 4 findings and 4 actions, priorities limited to `high|medium|low`, and refinement choices limited to the dashboard's real options.
+- **Grounding**: every number in the AI's text must match a computed fact, otherwise it is regenerated once (`dspy.Refine`) and then replaced by the rule-based brief.
+- **Cache**: keyed on the facts and the request, so the same data always gives the identical brief.
+- **Transport**: Claude requests go through the official Anthropic SDK (`ClaudeLM`), with no sampling parameters and with server-side refusal fallback.
+
 ## LLM configuration
 
 | Variable | Default | Purpose |

@@ -15,3 +15,5 @@ python-dotenv>=1.0
 # LLM providers (optional at runtime: the engine runs rule-based without a key)
 anthropic>=1.0
 openai>=1.0
+# Typed, constrained LLM output for the executive brief (dataforge/llm/brief.py)
+dspy>=3.4,<4
