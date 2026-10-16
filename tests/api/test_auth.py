@@ -184,3 +184,15 @@ def test_require_auth_without_clerk_fails_closed(tmp_path, monkeypatch):
         assert _upload(client).status_code == 401
         assert client.get("/api/history").status_code == 401
         assert client.post("/api/samples/products.csv").status_code == 201  # demo still works
+
+
+def test_token_that_expired_during_upload_is_accepted(api):
+    _, client = api
+    now = int(time.time())
+    # Minted before a slow upload / cold start; expired 30s ago (within the 60s grace).
+    recent = token("user_a", iat=now - 90, exp=now - 30)
+    assert _upload(client, {"Authorization": f"Bearer {recent}"}).status_code == 201
+    stale = token("user_a", iat=now - 300, exp=now - 120)
+    rejected = _upload(client, {"Authorization": f"Bearer {stale}"})
+    assert rejected.status_code == 401
+    assert rejected.json()["detail"]["detail"] == "Your session expired. Please try again."

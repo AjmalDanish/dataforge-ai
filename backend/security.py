@@ -86,8 +86,15 @@ def verify_token(token: str) -> User:
             algorithms=["RS256"],
             issuer=issuer,
             options={"require": ["exp", "iat", "sub", "iss"]},
-            leeway=5,
+            # ponytail: 60s grace because the token is checked only after the whole upload
+            # arrives; verify before reading the body if uploads ever exceed a minute.
+            leeway=60,
         )
+    except jwt.ExpiredSignatureError as e:
+        raise HTTPException(
+            status_code=401,
+            detail={"type": "invalid_token", "title": "Session expired", "detail": "Your session expired. Please try again."},
+        ) from e
     except jwt.PyJWTError as e:
         raise HTTPException(
             status_code=401,

@@ -19,7 +19,7 @@ export default function SampleButton({ name }: { name: string }) {
           setMessage(null);
           try {
             // Signed in: the run is yours (shows in History). Signed out: a private share link.
-            const run = await analyzeSample(name, await getToken());
+            const run = await analyzeSample(name, getToken);
             router.push(run.run_page);
           } catch (e) {
             setState("error");

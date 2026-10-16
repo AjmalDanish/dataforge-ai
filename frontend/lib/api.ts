@@ -122,15 +122,26 @@ export interface Started extends RunLinks {
   share_token: string;
 }
 
-export async function analyze(file: File, token: Token) {
+// A sleeping free-tier API holds the first request ~1 min while it boots, longer
+// than a Clerk session token lives (60s). So wake the API first, then mint the token.
+async function wakeApi() {
+  await fetch(`${API_URL}/healthz`, { cache: "no-store", headers: LT_HEADERS, signal: AbortSignal.timeout(120_000) });
+}
+
+export async function analyze(file: File, getToken: () => Promise<Token>) {
+  await wakeApi();
   const fd = new FormData();
   fd.append("file", file);
-  const r = await fetch(`${API_URL}/api/analyze`, { method: "POST", body: fd, headers: headers(token) });
+  const r = await fetch(`${API_URL}/api/analyze`, { method: "POST", body: fd, headers: headers(await getToken()) });
   return json<Started>(r, "Upload");
 }
 
-export async function analyzeSample(name: string, token: Token) {
-  const r = await fetch(`${API_URL}/api/samples/${encodeURIComponent(name)}`, { method: "POST", headers: headers(token) });
+export async function analyzeSample(name: string, getToken: () => Promise<Token>) {
+  await wakeApi();
+  const r = await fetch(`${API_URL}/api/samples/${encodeURIComponent(name)}`, {
+    method: "POST",
+    headers: headers(await getToken()),
+  });
   return json<Started>(r, "Sample");
 }
 

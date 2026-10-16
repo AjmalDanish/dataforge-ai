@@ -37,7 +37,7 @@ export default function UploadPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await analyze(file, await getToken());
+      const res = await analyze(file, getToken);
       router.push(res.run_page);
     } catch (e: any) {
       setError(e?.message || String(e));
